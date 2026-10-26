@@ -1,0 +1,112 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cicd-green-main"
+version = "0.1.0"
+description = "A small service and the CI pipeline that keeps its main branch releasable: parallel jobs, one checksummed artifact, a quarantined flaky test."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Sumit Srivastava" }]
+dependencies = ["psycopg[binary]>=3.2,<4"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<10",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "import-linter>=2.0",
+    "pip-audit>=2.7",
+    "build>=1.2",
+    "setuptools>=75",
+    "wheel>=0.45",
+    "pyyaml>=6",
+    "types-PyYAML>=6",
+]
+
+[project.scripts]
+small-service = "small_service.interfaces.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "pipeline", "tests"]
+extend-exclude = ["build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "N", "C4", "RUF", "PT", "S", "D100", "D101", "D103", "D104"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "pipeline", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: needs the PostgreSQL service from docker-compose.yml (make up)",
+    "e2e: runs the pipeline's own scenarios (git gate, local runner) end to end",
+    "flaky_quarantine: a test with a known timing flake; excluded from the required job, run by the non-blocking quarantine job",
+]
+
+[tool.coverage.run]
+source = ["small_service", "pipeline"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.importlinter]
+root_packages = ["small_service", "pipeline"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Service layers: interfaces -> infrastructure -> application -> domain, never upward"
+type = "layers"
+layers = [
+    "small_service.interfaces",
+    "small_service.infrastructure",
+    "small_service.application",
+    "small_service.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Service domain and application know nothing about PostgreSQL"
+type = "forbidden"
+source_modules = ["small_service.domain", "small_service.application"]
+forbidden_modules = ["psycopg"]
+
+[[tool.importlinter.contracts]]
+name = "Pipeline layers: cli -> adapters -> core, never upward"
+type = "layers"
+layers = ["pipeline.cli", "pipeline.adapters", "pipeline.core"]
+
+[[tool.importlinter.contracts]]
+name = "Pipeline core is pure: no subprocess, no network"
+type = "forbidden"
+source_modules = ["pipeline.core"]
+forbidden_modules = ["subprocess", "socket", "urllib", "http"]
+
+[[tool.importlinter.contracts]]
+name = "The pipeline tooling never imports the service it builds"
+type = "forbidden"
+source_modules = ["pipeline"]
+forbidden_modules = ["small_service"]
