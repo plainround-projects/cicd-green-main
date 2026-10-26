@@ -1,0 +1,44 @@
+#!/bin/sh
+# Server-side protection for `main`, the local counterpart of GitHub branch protection:
+#   - main only moves forward (the branch must be up to date; no force push, no deletion);
+#   - main only moves to a commit that has a green status, posted by CI as refs/status/green/<sha>;
+#   - only CI can post a status: a push to refs/status/* needs the token in $GIT_DIR/ci-token as a push option.
+# The first push that creates main is allowed, so a repository can be seeded.
+zero=0000000000000000000000000000000000000000
+
+ci_token_given() {
+  expected=$(cat "$GIT_DIR/ci-token" 2>/dev/null)
+  [ -n "$expected" ] || return 1
+  i=0
+  while [ "$i" -lt "${GIT_PUSH_OPTION_COUNT:-0}" ]; do
+    eval "option=\$GIT_PUSH_OPTION_$i"
+    [ "$option" = "ci-token=$expected" ] && return 0
+    i=$((i + 1))
+  done
+  return 1
+}
+
+status=0
+while read -r old new ref; do
+  case "$ref" in
+    refs/status/*)
+      if ! ci_token_given; then
+        echo "protected: only CI may post a status ($ref)" >&2
+        status=1
+      fi
+      ;;
+    refs/heads/main)
+      if [ "$new" = "$zero" ]; then
+        echo "GH006 protected branch: main cannot be deleted" >&2
+        status=1
+      elif [ "$old" != "$zero" ] && ! git merge-base --is-ancestor "$old" "$new"; then
+        echo "GH006 protected branch: the branch is not up to date with main (no force push)" >&2
+        status=1
+      elif [ "$old" != "$zero" ] && ! git rev-parse --verify -q "refs/status/green/$new" >/dev/null; then
+        echo "GH006 protected branch: required status checks have not passed for ${new%"${new#???????}"}" >&2
+        status=1
+      fi
+      ;;
+  esac
+done
+exit "$status"
