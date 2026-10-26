@@ -1,0 +1,38 @@
+# The local target: PostgreSQL for the integration tests and the packaged service (profile "app").
+# Host port and credentials come from .env (copied from .env.example by `make up`).
+services:
+  db:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-service}
+      POSTGRES_USER: ${POSTGRES_USER:-service}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55431}:5432"
+    # -h 127.0.0.1: the image first starts a temporary server that listens on the socket only; TCP answers when the real one is up
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  # The artifact the pipeline built, installed into an image and run against the database above:
+  #   make deploy-local
+  app:
+    profiles: ["app"]
+    image: cicd-green-main:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-service}
+      POSTGRES_USER: ${POSTGRES_USER:-service}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    command: ["small-service", "smoke"]
