@@ -32,11 +32,13 @@ LOCK_FILE = "requirements-dev.lock"
 
 @dataclass(frozen=True, slots=True)
 class RunOptions:
-    """What to run: the variant, the jobs to keep (None means all) and whether quarantined tests join the unit job."""
+    """What to run: the variant, the jobs to keep (None means all), whether quarantined tests join the unit job, and
+    the label written to the run log in place of the variant (to keep a flake hunt apart from ordinary runs)."""
 
     variant: str
     only: frozenset[str] | None = None
     include_quarantined: bool = False
+    label: str = ""
 
 
 def make_job(name: str, *arguments: str) -> Job:
@@ -132,7 +134,7 @@ def run_pipeline(root: Path, options: RunOptions, runs_csv: Path) -> tuple[list[
         commit=git.head_sha(root)[:7],
         seconds=seconds,
         result=runlog.SUCCESS if required_ok else runlog.FAILURE,
-        variant=options.variant,
+        variant=options.label or options.variant,
         failed_tests=tuple(failure.test_id for failure in failures),
         message=failures[0].message if failures else "",
     )

@@ -31,7 +31,7 @@ up: $(STAMP) .env ## start PostgreSQL and apply sql/001_schema.sql and 002_seed.
 	$(MAKE) --no-print-directory db
 
 # CI has a service container instead of compose: make db PSQL="psql -h localhost -p 5432 -U service -d service"
-PSQL ?= $(COMPOSE) exec -T db psql -v ON_ERROR_STOP=1 -q -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+PSQL ?= $(COMPOSE) exec -T -e PGOPTIONS=--client-min-messages=warning db psql -v ON_ERROR_STOP=1 -q -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
 db: ## apply the numbered scripts in sql/ (safe to repeat)
 	@for script in sql/00[12]_*.sql; do \
@@ -54,12 +54,12 @@ bench: up ## 5 sequential and 5 parallel runs, then the before and after table (
 HUNT_RUNS ?= 40
 flaky-hunt: $(STAMP) ## run the unit job with the planted flaky test HUNT_RUNS times (default 40)
 	@for run in $$(seq 1 $(HUNT_RUNS)); do \
-	  $(PY) -m pipeline run --variant parallel --only unit --include-quarantined >/dev/null || true; \
+	  $(PY) -m pipeline run --only unit --include-quarantined --label flake-hunt >/dev/null || true; \
 	done
 	$(MAKE) --no-print-directory flaky-report
 
 flaky-report: $(STAMP) ## find flaky tests in runs.csv: commits with both a pass and a fail, and each test's failure rate
-	$(PY) -m pipeline flaky
+	$(PY) -m pipeline flaky --variant flake-hunt
 
 lint: $(STAMP) ## ruff check, ruff format check, mypy, import-linter, workflow and contract checks
 	$(VENV)/bin/ruff check .

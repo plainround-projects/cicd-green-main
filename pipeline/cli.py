@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--variant", choices=("parallel", "sequential"), default="parallel")
     run.add_argument("--only", help="comma-separated jobs to run (build, lint, unit, integration, quarantine)")
     run.add_argument("--include-quarantined", action="store_true", help="run quarantined tests inside the unit job")
+    run.add_argument("--label", default="", help="the name this run gets in runs.csv (default: the variant)")
     run.add_argument("--runs-csv", type=Path, default=ROOT / "runs.csv")
     bench = commands.add_parser("bench", help="run both variants N times and print the before and after table")
     bench.add_argument("--runs", type=int, default=5)
@@ -73,7 +74,7 @@ def _print_outcomes(outcomes: Sequence[Outcome], record: runlog.RunRecord) -> No
 
 def _run(args: argparse.Namespace) -> int:
     only = frozenset(args.only.split(",")) if args.only else None
-    options = local_runner.RunOptions(args.variant, only, args.include_quarantined)
+    options = local_runner.RunOptions(args.variant, only, args.include_quarantined, args.label)
     outcomes, record = local_runner.run_pipeline(ROOT, options, args.runs_csv)
     _print_outcomes(outcomes, record)
     return 0 if record.result == runlog.SUCCESS else 1
