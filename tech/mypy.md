@@ -64,13 +64,13 @@ Here the annotation tells mypy which type parameters to use. Without it mypy cou
 ```
 Expect `mypy 2.4.0` and `Success: no issues found in N source files`.
 
-Make a deliberate mistake:
+Make a deliberate mistake (the file must live inside `src/` so mypy resolves the project's modules):
 ```bash
-printf 'from small_service.domain.cache import TimedCache\nc: TimedCache[str, int] = TimedCache(1, lambda: 0.0)\nprint(c.get("a") + 1)\n' > /tmp/typo.py
-.venv/bin/mypy /tmp/typo.py
-rm /tmp/typo.py
+printf 'from small_service.domain.cache import TimedCache\nc: TimedCache[str, int] = TimedCache(1, lambda: 0.0)\nprint(c.get("a") + 1)\n' > src/typo_demo.py
+.venv/bin/mypy src/typo_demo.py
+rm src/typo_demo.py
 ```
-Expect an error that `None` does not support `+` (an operator on `int | None`).
+Expect `Unsupported operand types for + ("None" and "int")` with the note `Left operand is of type "int | None"`.
 
 ```bash
 .venv/bin/mypy --strict --no-incremental src/small_service/domain/cache.py
