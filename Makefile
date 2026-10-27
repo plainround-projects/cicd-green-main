@@ -130,10 +130,12 @@ gate-demo: $(STAMP) ## step 2 without GitHub: a remote that refuses main unless 
 workflows: $(STAMP) ## lint the workflows (required checks exist, nothing unpinned, no paths filter)
 	$(PY) -m pipeline lint-workflows
 
-# Run the real workflow with act (needs Docker; see the README for what act cannot do).
-act: ## run the CI workflow's lint and unit jobs with act
-	act pull_request -j lint --container-architecture linux/arm64 -P ubuntu-latest=catthehacker/ubuntu:act-22.04
-	act pull_request -j unit --container-architecture linux/arm64 -P ubuntu-latest=catthehacker/ubuntu:act-22.04
+# Run a job of the real workflow with act (needs Docker; see the README for what act can and cannot do).
+# --container-daemon-socket - because the default socket path of Docker Desktop on a Mac cannot be mounted into the job.
+ACT_JOB ?= changes
+ACT_IMAGE ?= catthehacker/ubuntu:act-22.04
+act: ## run one job of ci.yml with act (make act ACT_JOB=lint ACT_IMAGE=<an image with python, make, lsb-release>)
+	act pull_request -j $(ACT_JOB) --container-architecture linux/arm64 --container-daemon-socket - -P ubuntu-latest=$(ACT_IMAGE)
 
 protection: $(STAMP) ## print the branch-protection JSON (make protection APPLY=owner/repo applies it with gh)
 	$(PY) -m pipeline protection $(if $(APPLY),--apply $(APPLY),)

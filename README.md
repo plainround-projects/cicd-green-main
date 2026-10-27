@@ -54,7 +54,7 @@ make test-e2e        # the protected-main demo and the docs-only change check, i
 make gate-demo       # step 2 without GitHub: a remote that refuses main unless CI posted a green status
 make protection APPLY=owner/repo   # prints, or with APPLY applies, the branch-protection JSON (needs gh)
 make deploy-local    # builds an image from the verified wheel and runs its smoke test against the database
-make act             # runs the lint and unit jobs of the real workflow with act
+make act             # runs one job of the real workflow with act (ACT_JOB=changes by default)
 make audit           # known-vulnerability check of the locked dependencies
 ```
 
@@ -91,7 +91,18 @@ The same behaviors run as automated tests: [tests/pipeline](tests/pipeline) (ver
 
 ## What act can and cannot do
 
-ACT_SECTION
+`act` runs a workflow's jobs in containers on your machine. What was run here, against the real [`ci.yml`](.github/workflows/ci.yml) with `act pull_request` and the runner image `plainround-act-runner:ubuntu-24.04` (a plain Ubuntu 24.04 with `make`, `git`, `node` and `curl`):
+
+```text
+[ci/changes] Success - Main actions/checkout@11bd7190... [34s]
+[ci/changes] | code=true
+[ci/changes] Success - Main pipeline/changes.sh "$BASE" "38637e9b..." | tee -a "$GITHUB_OUTPUT"
+[ci/changes] Job succeeded
+```
+
+- **Works:** the `changes` job (checkout of a pinned action, the shell script, the job output). `make act` runs it, and any job whose runner image has what the job needs. It is the quickest check of the workflow's syntax, the `needs` graph (`act -l` lists it) and the pinned references, because act fetches each pinned action by its commit.
+- **Does not work with that image:** the `lint`, `unit` and `quarantine` jobs stop at `actions/setup-python` (`Unable to locate executable file: lsb_release`): the image has no Python and no `lsb_release`. The usual fix is the community runner image `catthehacker/ubuntu:act-22.04` (`make act ACT_JOB=lint ACT_IMAGE=catthehacker/ubuntu:act-22.04`); it is about 1.5 GB and was not pulled here, so those jobs were **not** run through act. They run through the same make targets with `make run`.
+- **Cannot work in act:** the `integration` job (a PostgreSQL service container and artifacts that pass between jobs need the Docker socket and `--artifact-server-path`, and `--container-daemon-socket -` turns the socket off for the others), `merge_group` (there is no queue), the pull-request protection (a repository setting) and anything that needs a GitHub-hosted cache. On a Mac, act also needs `--container-architecture linux/arm64` and the socket flag, which `make act` passes.
 
 ## Stretch goals
 
