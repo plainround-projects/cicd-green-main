@@ -30,7 +30,7 @@ A small Python service and the CI pipeline that keeps its `main` branch releasab
 | `gh` | optional | applies branch protection and reads real run history once the repository is on GitHub |
 | Python packages | psycopg 3 at run time; pytest, pytest-cov, ruff, mypy, import-linter, pip-audit, build, PyYAML for development. All pinned with hashes in `requirements.lock` and `requirements-dev.lock`; `make` installs them into `.venv/` | everything |
 
-No cloud account, no secrets. The compose database listens on `127.0.0.1:55431` and its throwaway password is in `.env.example`.
+No cloud account, no secrets. The compose database listens on `127.0.0.1:55471` and its throwaway password is in `.env.example`.
 
 ## Setup, run, test, stop
 
@@ -164,7 +164,7 @@ The dependency rule (domain depends on nothing; application on domain; infrastru
 
 ## Troubleshooting
 
-- **Port 55431 is in use:** change `POSTGRES_PORT` in `.env`.
+- **Port 55471 is in use:** change `POSTGRES_PORT` in `.env`.
 - **The integration job is slow the first time:** it builds a clean environment for the wheel (`.cache/artifact-venv-<hash of the lock file>`); later runs reuse it. This is the "cache by lock-file hash" of step 3 on a laptop.
 - **A parallel run failed once in the first benchmark (the integration job, 34 seconds in):** the machine's load average was above 100. The cause was not captured (the log of that run was overwritten by the next one). The likeliest cause is the smoke command waiting one second for a job that sleeps up to 112 ms while the CPU was starved, so the wait is now five seconds (`JOB_TIMEOUT_SECONDS`). Twelve repeated runs of the integration job passed afterwards, including with the old one-second wait, so that explanation is a hypothesis, not a finding. The run log now records the failing test of the integration job as well, so the next such row says where it failed.
 - **`make bench` takes a long time:** the sequential variant builds a fresh environment from the network every time, on purpose.
