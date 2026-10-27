@@ -8,6 +8,7 @@ A small Python service and the CI pipeline that keeps its `main` branch releasab
 | **Planned hours** | 5 |
 | **Level** | Beginner |
 | **Architecture** | [ARCHITECTURE.md](ARCHITECTURE.md), decisions in [docs/adr](docs/adr) |
+| **Technology notes** | [tech/](tech/README.md): one beginner file per technology used here (29 files) |
 
 ## The pipeline's contract
 
