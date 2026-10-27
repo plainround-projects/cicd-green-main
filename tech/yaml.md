@@ -62,6 +62,7 @@ Every YAML file's keys are explained where the file is explained: `ci.yml`, `aud
 
 ### The `on:` trap and how the code handles it
 
+<!-- fmt:off -->
 ```python
 def load(text: str) -> Mapping[str, Any]:
     """Parse a workflow. PyYAML reads the key `on` as the boolean True; put it back under "on"."""
@@ -72,6 +73,7 @@ def load(text: str) -> Mapping[str, Any]:
         document["on"] = document.pop(True)
     return document
 ```
+<!-- fmt:on -->
 
 - **Line 26**: `yaml.safe_load(text)` parses the workflow into a dictionary.
 - **Lines 27 and 28**: if the result is not a dictionary (`isinstance(document, dict)`), the file is not a workflow: raise `ValueError`.

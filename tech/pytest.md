@@ -88,14 +88,17 @@ Explained in [make.md](make.md): `make test` (unit and pipeline tests with a JUn
 
 ### `tests/conftest.py`
 
+<!-- fmt:off -->
 ```python
 """Shared fixtures."""
 ```
+<!-- fmt:on -->
 
 A one-line docstring: shared fixtures would go here. pytest loads any file called `conftest.py` automatically and makes its fixtures available to the tests below that folder.
 
 ### `tests/unit/fakes.py`: stand-ins shared by the unit tests
 
+<!-- fmt:off -->
 ```python
 """In-memory stand-ins for the ports, shared by the unit tests."""
 
@@ -134,12 +137,14 @@ class FakeClock:
     def advance(self, seconds: float) -> None:
         self.now += seconds
 ```
+<!-- fmt:on -->
 
 - **`InMemoryJobStore`** (lines 8 to 23) implements the same methods as the real `JobStore` ([python.md](python.md): `ports.py`) but keeps records in a list. `reachable=False` makes `ping` raise `ConnectionError("store is down")`, so a test can simulate an outage. `recent` returns `list(reversed(self.records))[:limit]`: the list in reverse (newest first) cut to `limit`.
 - **`FakeClock`** (lines 26 to 36) is a clock the test controls. `__call__` makes the object callable like a function (`clock()` returns `self.now`). `advance(seconds)` moves time forward. `start=1000.0` is an arbitrary starting second.
 
 ### `tests/unit/domain/test_cache.py`: the time-limited cache
 
+<!-- fmt:off -->
 ```python
 import threading
 
@@ -190,6 +195,7 @@ def test_putting_again_restarts_the_time_to_live():
     clock.advance(8)
     assert cache.get("a") == 2
 ```
+<!-- fmt:on -->
 
 - **Lines 1 to 7**: imports, including `threading` and `pytest`. **Lines 10 to 12**: `make_cache` is a helper that returns a cache and the fake clock that drives it; the test then moves time with `clock.advance`. No test sleeps.
 - **`test_a_stored_value_is_returned_before_it_expires`** (15 to 19): store `"a"` with a 10-second lifetime, advance 9.9 seconds, expect the value.
@@ -198,6 +204,7 @@ def test_putting_again_restarts_the_time_to_live():
 - **`test_a_missing_key_returns_none`** (37 to 39): `cache, _ = make_cache()` ignores the clock with `_`.
 - **`test_putting_again_restarts_the_time_to_live`** (42 to 48): store, advance 8, store again, advance 8 more (16 seconds after the first store but only 8 after the second); the second value is still there.
 
+<!-- fmt:off -->
 ```python
 def test_purge_drops_only_expired_entries_and_counts_them():
     cache, clock = make_cache()
@@ -224,6 +231,7 @@ def test_concurrent_puts_do_not_lose_entries():
         thread.join()
     assert len(cache) == 50
 ```
+<!-- fmt:on -->
 
 - **`test_purge_drops_only_expired_entries_and_counts_them`** (51 to 58): `old` is stored, 6 seconds pass, `new` is stored, 5 more pass: `old` is 11 seconds old (expired) and `new` is 5 seconds old. `purge()` must return 1 and `new` must survive.
 - **`test_a_non_positive_time_to_live_is_refused`** (61 to 64): `@pytest.mark.parametrize("ttl", [0, -1, -0.5])` runs the test three times. Each time `with pytest.raises(InvalidTtlError): TimedCache(ttl, FakeClock())` must raise.
@@ -231,6 +239,7 @@ def test_concurrent_puts_do_not_lose_entries():
 
 ### `tests/unit/domain/test_jobs.py` and `test_jobs_timing.py`: the job
 
+<!-- fmt:off -->
 ```python
 import pytest
 
@@ -267,6 +276,7 @@ def test_the_planted_delay_is_between_50_and_112_ms():
     assert max(delays) <= MAX_JOB_SECONDS
 
 ```
+<!-- fmt:on -->
 
 - **Lines 7 to 8**: `instant_job()` builds a `Job` whose delay is 0 and whose `sleep` does nothing (`lambda seconds: None`).
 - **`test_wait_returns_true_once_the_work_has_ended`** (11 to 15): start, wait up to 1 second, expect `True` (`is True`) and `job.done`.
@@ -274,6 +284,7 @@ def test_the_planted_delay_is_between_50_and_112_ms():
 - **`test_waiting_before_starting_is_an_error`** (25 to 27): `JobNotStartedError`.
 - **`test_the_planted_delay_is_between_50_and_112_ms`** (30 to 33): draw 500 random delays and check that the smallest and largest are inside the limits.
 
+<!-- fmt:off -->
 ```python
 def test_the_fix_for_the_flaky_test_waits_for_the_job_instead_of_sleeping_a_guess():
     # The lesson's flaky test sleeps 100 ms and then asserts. Waiting is correct for any delay the job picks.
@@ -293,10 +304,12 @@ def test_invalid_job_keys_are_refused(key):
     with pytest.raises(InvalidJobKeyError):
         validate_job_key(key)
 ```
+<!-- fmt:on -->
 
 - **`test_the_fix_for_the_flaky_test_waits_for_the_job_instead_of_sleeping_a_guess`** (36 to 41): the corrected version of the flaky test. It runs 25 real jobs and *waits* for each to finish (`job.wait(timeout_seconds=1)`), which is correct for any delay the job picks.
 - **`test_valid_job_keys_are_returned_unchanged`** (44 to 46) and **`test_invalid_job_keys_are_refused`** (49 to 52) are `parametrize` tests: four valid keys including the boundaries `"a"` (1 character) and `"x" * 64` (64 characters), and seven invalid ones: empty, 65 characters, a space, a semicolon, a slash, a non-ASCII letter and a quote.
 
+<!-- fmt:off -->
 ```python
 """The lesson's planted flaky test, kept as it was written and quarantined.
 
@@ -320,6 +333,7 @@ def test_job_finishes_in_time():
     time.sleep(0.1)  # a timing assumption: the job is usually, not always, finished by now
     assert job.done
 ```
+<!-- fmt:on -->
 
 - This file is the **planted flaky test**, kept as it was written. The docstring explains: the job takes a random 50 to 112.5 ms and the test sleeps a fixed 100 ms, so it fails when the job is slower than 100 ms, about one run in five (12.5 ms of a 62.5 ms range).
 - **Line 16**: `@pytest.mark.flaky_quarantine` labels the test. The required `unit` job runs with `-m "not flaky_quarantine"`, so it is excluded there; the non-blocking `quarantine` job selects it.
@@ -327,6 +341,7 @@ def test_job_finishes_in_time():
 
 ### `tests/unit/application/`: the use cases
 
+<!-- fmt:off -->
 ```python
 from datetime import UTC, datetime
 
@@ -358,12 +373,14 @@ def test_a_reachable_store_is_healthy():
 def test_an_unreachable_store_is_not_healthy():
     assert is_healthy(InMemoryJobStore(reachable=False)) is False
 ```
+<!-- fmt:on -->
 
 - **Line 9**: `WHEN = datetime(2026, 9, 1, tzinfo=UTC)` is a fixed moment.
 - **`test_recent_runs_returns_the_newest_first_up_to_the_limit`** (12 to 16): save four records named `job-0` to `job-3`; asking for 2 must give `["job-3", "job-2"]`.
 - **`test_a_limit_below_one_is_refused`** (19 to 21): `pytest.raises(ValueError, match="at least 1")`; `match` checks the error message against a pattern.
 - **Lines 24 to 29**: a reachable fake store is healthy (`is True`); `InMemoryJobStore(reachable=False)` is not (`is False`).
 
+<!-- fmt:off -->
 ```python
 import threading
 from collections.abc import Callable
@@ -414,11 +431,13 @@ def test_a_repeat_call_within_the_time_to_live_is_answered_from_the_cache():
     assert len(store.records) == 1
 
 ```
+<!-- fmt:on -->
 
 - **Lines 16 to 31**: `make_runner` assembles a `JobRunner` from fakes: an in-memory store, a fake clock used for both the cache and the monotonic clock, a 30-second cache lifetime, a fixed "now", and a job factory that creates instant jobs. It returns the runner, the store and the clock so tests can look inside.
 - **`test_a_first_call_runs_the_job_and_records_it`** (34 to 38): the result is `("report", True, False)` (key, finished, not from cache) and the store holds that record.
 - **`test_a_repeat_call_within_the_time_to_live_is_answered_from_the_cache`** (41 to 47): the second call returns the same record, flagged `from_cache is True`, and the store still has one record.
 
+<!-- fmt:off -->
 ```python
 def test_after_the_time_to_live_the_job_runs_again():
     runner, store, clock = make_runner()
@@ -447,6 +466,7 @@ def test_an_invalid_key_is_refused_before_anything_runs():
         runner.run("not valid!")
     assert store.records == []
 ```
+<!-- fmt:on -->
 
 - **`test_after_the_time_to_live_the_job_runs_again`** (50 to 56): advance 31 seconds (past the 30-second lifetime); the next call is not from the cache and the store now has two records.
 - **`test_a_job_that_outlasts_the_timeout_is_recorded_as_unfinished`** (59 to 68): a `threading.Event` called `release` and a `block` function that waits on it make a job that never finishes by itself. With a 0.01-second timeout the record is `finished is False`; `release.set()` then lets the helper thread end so the test leaves nothing running.
@@ -454,6 +474,7 @@ def test_an_invalid_key_is_refused_before_anything_runs():
 
 ### `tests/unit/infrastructure/`: logging, retry and settings
 
+<!-- fmt:off -->
 ```python
 import io
 import logging
@@ -502,6 +523,7 @@ def test_configure_logging_writes_to_the_given_stream():
     assert "msg=hello a=1" in stream.getvalue()
 
 ```
+<!-- fmt:on -->
 
 - **Lines 12 to 15**: `format_record` builds a log record by hand (`logging.LogRecord(name, level, path, line, message, args, exc_info)`), attaches the `fields` dictionary and formats it with our formatter.
 - **`test_a_record_becomes_one_logfmt_line_with_its_fields`** (18 to 23): the line contains `level=INFO`, `msg="job done"` (quoted because it has a space), `job_key=nightly` and `duration_ms=71`.
@@ -509,6 +531,7 @@ def test_configure_logging_writes_to_the_given_stream():
 - **`test_an_exception_is_attached_on_the_same_line`** (31 to 38): raise and catch a `ValueError`, build a record with `sys.exc_info()` (the current error), format it: the line contains `exc=` and no newline.
 - **`test_configure_logging_writes_to_the_given_stream`** (41 to 45): `io.StringIO()` is an in-memory text stream. After `configure_logging("INFO", stream)` a message appears there as `msg=hello a=1`.
 
+<!-- fmt:off -->
 ```python
 def test_retry_returns_the_first_success_without_sleeping():
     sleeps: list[float] = []
@@ -550,11 +573,13 @@ def test_retry_needs_at_least_one_attempt():
     with pytest.raises(ValueError, match="at least 1"):
         retry(lambda: 1, (ConnectionError,), attempts=0)
 ```
+<!-- fmt:on -->
 
 - **`test_retry_returns_the_first_success_without_sleeping`** (48 to 51): `sleep=sleeps.append` records each wait in a list instead of waiting; the list stays empty.
 - **`test_retry_backs_off_exponentially_then_succeeds`** (54 to 65): `iter([...])` makes an iterator over two errors and then `"ok"`; `next(attempts)` takes one per call. With a base delay of 1.0 and no jitter (`jitter=lambda: 0.0`), the recorded waits are `[1.0, 2.0]`: doubling.
 - **`test_retry_raises_the_last_error_after_the_final_attempt`** (68 to 73), **`test_retry_does_not_catch_other_errors`** (76 to 81), **`test_retry_needs_at_least_one_attempt`** (84 to 86).
 
+<!-- fmt:off -->
 ```python
 import pytest
 
@@ -599,6 +624,7 @@ def test_an_unusable_value_names_its_variable(name, value):
 def test_the_log_level_is_case_insensitive():
     assert Settings.from_env({**BASE, "LOG_LEVEL": "debug"}).log_level == "DEBUG"
 ```
+<!-- fmt:on -->
 
 - **`BASE = {"POSTGRES_PASSWORD": "pw"}`**: the one required setting.
 - **`test_defaults_apply_when_only_the_password_is_set`** (8 to 10): host `localhost`, port 5432, cache lifetime 30.
@@ -609,6 +635,7 @@ def test_the_log_level_is_case_insensitive():
 
 ### `tests/unit/interfaces/test_cli.py`: the command line, with the database replaced
 
+<!-- fmt:off -->
 ```python
 from datetime import UTC, datetime
 
@@ -640,9 +667,11 @@ def store(monkeypatch: pytest.MonkeyPatch) -> InMemoryJobStore:
     return fake
 
 ```
+<!-- fmt:on -->
 
 - **Lines 12 to 28**: the fixture `store`. `monkeypatch.setenv("POSTGRES_PASSWORD", "pw")` sets the variable for this test only. It builds a `JobRunner` from fakes and then `monkeypatch.setattr(cli, "_runner", lambda settings: (runner, fake))`, replacing the function that would have connected to PostgreSQL, so the real `main()` runs end to end against the fake store. It returns the fake store so tests can inspect it.
 
+<!-- fmt:off -->
 ```python
 def test_version_prints_the_installed_version_without_needing_a_database(capsys, monkeypatch):
     monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
@@ -695,6 +724,7 @@ def test_an_unexpected_error_exits_with_the_failure_code(store, monkeypatch):
     monkeypatch.setattr(store, "save", lambda record: (_ for _ in ()).throw(RuntimeError("disk full")))
     assert cli.main(["run-job", "x"]) == cli.EXIT_FAILED
 ```
+<!-- fmt:on -->
 
 - **`test_version_prints_the_installed_version_without_needing_a_database`** (31 to 34): `monkeypatch.delenv(..., raising=False)` removes the password. `cli.main(["version"]) == 0` and `capsys.readouterr().out.strip()` equals `cli.installed_version()`.
 - **`test_a_missing_password_exits_with_the_usage_code`** (37 to 40): exit code `EXIT_USAGE` (2) and the error output mentions `POSTGRES_PASSWORD`.
@@ -707,6 +737,7 @@ def test_an_unexpected_error_exits_with_the_failure_code(store, monkeypatch):
 
 ### `tests/integration/`: against the real database and the built wheel
 
+<!-- fmt:off -->
 ```python
 """Integration tests need the PostgreSQL service from docker-compose.yml: `make up` first."""
 
@@ -751,6 +782,7 @@ def key_prefix(settings: Settings) -> Iterator[str]:
 def running_against_the_artifact() -> bool:
     return os.environ.get("ARTIFACT_TESTS") == "1"
 ```
+<!-- fmt:on -->
 
 - **Lines 16 to 18**: `pytest_collection_modifyitems` is a **hook** that pytest calls after collecting tests (it recognises the special name). It adds the `integration` marker to every test in the folder.
 - **Lines 21 to 23**: `settings` has `scope="session"`: built once, from the real environment.
@@ -758,6 +790,7 @@ def running_against_the_artifact() -> bool:
 - **Lines 31 to 37**: `key_prefix` makes a unique name like `it-3fa91bc2` (`uuid.uuid4().hex[:8]` is the first eight hexadecimal characters of a random identifier), gives it to the test with `yield`, and, after the test, deletes every row whose key starts with it (`LIKE %s` with `"{prefix}%"`). Tests therefore never see each other's rows.
 - **Lines 40 to 42**: `running_against_the_artifact` is true when `ARTIFACT_TESTS` is `1`.
 
+<!-- fmt:off -->
 ```python
 from datetime import UTC, datetime, timedelta
 
@@ -804,9 +837,11 @@ def test_an_unreachable_database_is_retried_and_then_raises():
     with pytest.raises(psycopg.OperationalError):
         unreachable.ping()
 ```
+<!-- fmt:on -->
 
 - **Lines 12 to 13**: the database answers a ping. **Lines 16 to 19**: a saved record is read back equal (`record in store.recent(50)`). **Lines 22 to 28**: two records one minute apart come back newest first; `mine = [...]` keeps only this test's rows. **Lines 31 to 38**: the schema's `CHECK` rules fire: `psycopg.errors.CheckViolation` for the key `"not valid!"` and for a duration of -1. **Lines 41 to 44**: a store pointed at `127.0.0.1:1` (nothing listens there) raises `psycopg.OperationalError` after the retries.
 
+<!-- fmt:off -->
 ```python
 """Run by the pipeline's integration job (ARTIFACT_TESTS=1): the tests exercise the installed wheel, not the sources."""
 
@@ -841,6 +876,7 @@ def test_the_installed_command_reports_its_version():
     )
     assert result.stdout.strip() == cli.installed_version()
 ```
+<!-- fmt:on -->
 
 - Run by the pipeline's integration job with `ARTIFACT_TESTS=1`, against the *installed wheel*.
 - **Lines 16 to 20**: if the variable is not set, `pytest.skip(...)` marks the test as skipped with a reason. When set, `"site-packages" in Path(small_service.__file__).parts` proves the code came from an installed package, not the source folder, and `"+" in importlib.metadata.version("cicd-green-main")` proves the version carries a commit.
@@ -849,6 +885,7 @@ def test_the_installed_command_reports_its_version():
 
 ### `tests/e2e/test_gate_demo.py`: the protected-main scenario
 
+<!-- fmt:off -->
 ```python
 """The protected-main scenario end to end, in temporary git repositories (no network, no database)."""
 
@@ -920,6 +957,7 @@ def test_changes_script_skips_only_documentation_changes(tmp_path):
     assert decide("0" * 40, "HEAD") == "code=true"
     assert decide("f" * 40, "HEAD") == "code=true"
 ```
+<!-- fmt:on -->
 
 - **Line 12**: `pytestmark = pytest.mark.e2e` labels every test in the file.
 - **`test_the_gate_demo_refuses_what_a_protected_main_refuses_and_accepts_the_green_merge`** (15 to 26): puts the Python environment's folder first on `PATH`, runs `scripts/gate-demo.sh` ([bash-and-sh.md](bash-and-sh.md)) with a five-minute timeout and asserts it exits 0, printed `-> refused` exactly six times, printed `-> accepted`, and contains the three kinds of refusal messages and the final `all six behaviors confirmed`.
@@ -927,6 +965,7 @@ def test_changes_script_skips_only_documentation_changes(tmp_path):
 
 ### `tests/pipeline/`: the pipeline's own logic
 
+<!-- fmt:off -->
 ```python
 import pytest
 from pipeline.core import checksum
@@ -999,10 +1038,12 @@ def test_sums_lines_round_trip(tmp_path):
     line = checksum.sums_line(artifact, "ab" * 32)
     assert checksum.parse_sums(line + "\n\n") == {"a-1.0.whl": "ab" * 32}
 ```
+<!-- fmt:on -->
 
 - **Line 5**: `PYPROJECT` is a small sample `pyproject.toml` as text. Tests: the base version is read (8 to 9); `0.1` is refused (12 to 14); the version is `0.1.0+3fa91bc` from a longer commit id (17 to 18); the same commit gives the same version (21 to 22); `dirty=True` adds `.dirty` (25 to 26); bad commits are refused (29 to 32: empty, too short, upper-case letters, a non-hex letter); stamping replaces only the project version and keeps `requires = ["x"]` (35 to 38); a file with no version is refused (41 to 43).
 - **Lines 46 to 49**: the SHA-256 of the three bytes `abc` is the well-known value `ba7816bf...15ad`. **Lines 52 to 55**: `verify` accepts the same digest in capitals. **Lines 58 to 64**: change the file after taking its checksum: `ChecksumMismatchError` whose message contains "expected sha256". **Lines 67 to 70**: `sums_line` and `parse_sums` round-trip (a trailing blank line is ignored).
 
+<!-- fmt:off -->
 ```python
 import json
 
@@ -1077,11 +1118,13 @@ def test_the_comparison_says_whether_the_median_is_under_half_the_start():
     assert runlog.format_comparison(before, slow).endswith("no")
 
 ```
+<!-- fmt:on -->
 
 - **Lines 6 to 11**: `JUNIT` is a small sample report with one failure whose message has an HTML-style line break (`&#10;`), one passing case and one `error`. **Lines 14 to 17**: `record(...)` builds a `RunRecord` quickly.
 - **Lines 20 to 26**: a log written with `append` and read back is equal, and the first line of the file is the header. **Lines 29 to 32**: a missing file is an empty log and numbering starts at 1. **Lines 35 to 36**: the next number is highest plus one (5). **Lines 39 to 44**: a message is kept on one line and cut to exactly 160 characters.
 - **Lines 47 to 51**: with times 100, 110 and 400 the median is 110, not the average 203. **Lines 54 to 55**: no runs of a variant gives `None`. **Lines 58 to 60**: `65` seconds is `"1m 05s"` and `42.4` is `"42s"`. **Lines 63 to 71**: the comparison table says "yes" when 40 is under half of 100, and ends with "no" for 60.
 
+<!-- fmt:off -->
 ```python
 def test_flaky_commits_are_those_that_both_passed_and_failed():
     records = [
@@ -1157,10 +1200,12 @@ def test_github_runs_become_log_rows_oldest_first_and_unfinished_runs_are_skippe
         (2, "b84d20e", 210.0, FAILURE),
     ]
 ```
+<!-- fmt:on -->
 
 - **Lines 74 to 83**: commits `3fa91bc` and `b84d20e` have both outcomes; `aaaaaaa` and `bbbbbbb` have one. **Lines 86 to 94**: ten runs where every fifth fails: a test with 2 failures in 10 runs, rate 0.2, one message seen twice. **Lines 97 to 102**: the report text has the commit, `failure rate of t.py::flaky: 1 of 2 runs (50%)` and `failed 1 times with: assert False`. **Lines 105 to 106**: no disagreement prints `none`.
 - **Lines 109 to 115**: the JUnit sample yields two failures with test ids `tests/unit/domain/test_jobs_timing.py::test_job_finishes_in_time` and `tests/unit/x.py::test_broken`; the first message is "assert False". **Lines 118 to 146**: GitHub runs given out of order, with one unfinished: only two rows come out, oldest first, with durations 185 and 210 seconds.
 
+<!-- fmt:off -->
 ```python
 import json
 import subprocess
@@ -1231,10 +1276,12 @@ def test_an_uncommitted_change_makes_the_version_dirty(repo):
     assert builder.build_wheel(repo, repo / "dist", sys.executable).version.endswith(".dirty")
 
 ```
+<!-- fmt:on -->
 
 - **Lines 12 to 22**: `PYPROJECT` for a tiny demo package. **Lines 25 to 31**: `git_run` runs Git with a fixed identity. **Lines 34 to 45**: the fixture `repo` builds a real temporary repository: a package `demo_pkg`, `pyproject.toml`, `README.md`, `LICENSE`, a `.gitignore` for `dist*/`, then `git init`, `add`, `commit`.
 - **Lines 48 to 51**: the wheel's version is `0.1.0+<first 7 of the commit>` and its file name follows the wheel naming scheme. **Lines 54 to 57**: building the same commit twice into different folders gives the same SHA-256: a reproducible build. **Lines 60 to 62**: `dist/SHA256SUMS` contains exactly `<digest>  <file>\n`. **Lines 65 to 67**: after editing a tracked file the version ends in `.dirty`.
 
+<!-- fmt:off -->
 ```python
 def test_a_job_runs_its_steps_in_order_and_logs_them(tmp_path):
     job = Job("demo", (Command(("echo", "one")), Command(("echo", "two"))))
@@ -1332,11 +1379,13 @@ def test_importing_github_runs_appends_rows(tmp_path):
     assert cli.main(["import-gh-runs", str(source), "--runs-csv", str(csv_path)]) == 0
     assert csv_path.read_text().splitlines()[1].startswith("7,abcdef0,120.0,success,github")
 ```
+<!-- fmt:on -->
 
 - **Lines 70 to 87**: jobs. Two `echo` steps both appear in the log (`count("$ echo") == 2`); a job whose first step is the program `false` (it always fails) stops there: `never` is not in the log and `[exit status 1]` is; `Command(("sh", "-c", "echo $PIPELINE_DEMO"), {"PIPELINE_DEMO": "hello"})` shows a step sees the environment it was given.
 - **Lines 90 to 109**: `integration_job` is exactly the `make test-artifact WHEEL=... EXPECTED_SHA256=...` command; the unit job carries `UNIT_MARKERS=not flaky_quarantine` unless quarantined tests are requested; `_read_digest` parses `dist/SHA256SUMS`. **Lines 112 to 116**: the baseline's first step is `venv --clear`, its second uses `--no-cache-dir`, and the last is `-m pipeline build`.
 - **Lines 119 to 132**: the command-line parser accepts each command. **Lines 135 to 142**: `verify` returns 0 for the right digest (printing `integration: sha256 ... verified`) and 1 for a wrong one (printing `MISMATCH` on standard error). **Lines 145 to 149**: `protection` prints JSON with `"contexts"`; `flaky` on a missing log prints `none`. **Lines 152 to 164**: `import-gh-runs` appends a row starting `7,abcdef0,120.0,success,github`.
 
+<!-- fmt:off -->
 ```python
 from pathlib import Path
 
@@ -1405,10 +1454,12 @@ def test_continue_on_error_outside_the_quarantine_job_is_found():
 
 
 ```
+<!-- fmt:on -->
 
 - **Lines 8 to 27**: `GOOD` is a sample workflow as text that passes every rule. **Lines 30 to 31**: `findings(text, required)` returns the rule codes found. The tests then change one thing at a time with `str.replace` and expect one code: WF001 for a required check no job reports (47 to 48), WF003 for a `paths-ignore` filter (51 to 52), WF002 for no pull-request trigger (55 to 56), WF004 for `continue-on-error` outside the quarantine job (59 to 64), WF005 for three bad pins, parametrized (67 to 69).
 - **Lines 38 to 39**: despite YAML reading `on` as `True`, `workflow.load(GOOD)["on"]` works. **Lines 42 to 44**: a job's `name:` is used as its check name.
 
+<!-- fmt:off -->
 ```python
 def test_a_moving_name_in_a_command_or_service_is_found():
     assert "WF006" in findings(GOOD.replace("make lint", "docker run postgres:latest"))
@@ -1495,6 +1546,7 @@ def test_a_readme_without_the_section_fails():
 def test_this_repository_readme_has_a_valid_contract():
     assert contract.check((ROOT / "README.md").read_text()) == []
 ```
+<!-- fmt:on -->
 
 - **Lines 72 to 79**: WF006 for `postgres:latest` in a command and in a service image. **Lines 82 to 83**: WF007 when permissions are missing. **Lines 86 to 88**: a scheduled workflow with no required checks is fine. **Lines 91 to 97**: every real workflow and composite action in this repository passes the rules. **Lines 100 to 104**: an unpinned step in a composite action is WF005.
 - **Lines 107 to 121**: the protection payload requires the checks strictly, for admins, forbids force pushes, needs at least one check, and its required checks are real job names of `ci.yml`.

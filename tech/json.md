@@ -33,6 +33,7 @@ Two outside tools exchange JSON with the pipeline. GitHub's API takes the branch
 
 ### The branch-protection body (`pipeline/core/protection.py`)
 
+<!-- fmt:off -->
 ```python
 def branch_protection(checks: Sequence[str] = REQUIRED_CHECKS) -> dict[str, Any]:
     """The JSON body for `PUT /repos/{owner}/{repo}/branches/main/protection`.
@@ -51,6 +52,7 @@ def branch_protection(checks: Sequence[str] = REQUIRED_CHECKS) -> dict[str, Any]
         "allow_deletions": False,
     }
 ```
+<!-- fmt:on -->
 
 - A Python dictionary with exactly the shape GitHub's API expects. `required_status_checks` is itself an object with `strict` and `contexts`. `strict: True` means the branch must be up to date with `main` before merging. `contexts` is the list of job names that must pass (`list(checks)` turns the tuple into a list because JSON has arrays, not tuples).
 - `enforce_admins: True` applies the rules to repository owners too. `required_pull_request_reviews: {"required_approving_review_count": 0}` requires a pull request without requiring an approval (a one-person project). `restrictions: None` becomes JSON `null`: no limit on who may push beyond these rules. `allow_force_pushes: False` and `allow_deletions: False` forbid rewriting or removing `main`.
@@ -58,6 +60,7 @@ def branch_protection(checks: Sequence[str] = REQUIRED_CHECKS) -> dict[str, Any]
 
 `make protection` prints the dictionary with `print(json.dumps(payload, indent=2))`. `make protection APPLY=owner/repo` calls `github.apply_branch_protection`:
 
+<!-- fmt:off -->
 ```python
 def apply_branch_protection(repo: str, payload: dict[str, Any]) -> None:
     """`PUT /repos/{repo}/branches/main/protection` with `payload`."""
@@ -68,11 +71,13 @@ def apply_branch_protection(repo: str, payload: dict[str, Any]) -> None:
         check=True,
     )
 ```
+<!-- fmt:on -->
 
 runs `gh api -X PUT repos/<repo>/branches/main/protection --input -`: `-X PUT` is the HTTP method that replaces the settings, and `--input -` reads the request body from standard input, where `input=json.dumps(payload)` supplies it ([gh-cli.md](gh-cli.md)).
 
 ### The run history (`pipeline/core/ghruns.py`)
 
+<!-- fmt:off -->
 ```python
 def parse_gh_runs(json_text: str, variant: str = "github") -> list[RunRecord]:
     """Completed runs only, oldest first. A conclusion of `success` is a pass; every other conclusion is a failure."""
@@ -94,6 +99,7 @@ def parse_gh_runs(json_text: str, variant: str = "github") -> list[RunRecord]:
         )
     return records
 ```
+<!-- fmt:on -->
 
 - **Line 13**: `rows = json.loads(json_text)` gives a list of dictionaries, one per run, with keys `databaseId`, `headSha`, `conclusion`, `createdAt`, `updatedAt` (the five fields `list_runs` asked for).
 - **Lines 15 to 17**: sort by `createdAt`; skip a run whose `conclusion` is empty (still running).
@@ -102,11 +108,13 @@ def parse_gh_runs(json_text: str, variant: str = "github") -> list[RunRecord]:
 
 ### Quoting log values (`logging.py`)
 
+<!-- fmt:off -->
 ```python
 def _quote(value: object) -> str:
     text = str(value)
     return json.dumps(text) if not text or any(char in text for char in ' ="\n') else text
 ```
+<!-- fmt:on -->
 
 `json.dumps(text)` returns the text in double quotes with special characters escaped (`\n` for a newline, `\"` for a quote). `_quote` uses it only when a value is empty or contains a space, `=`, `"` or newline, so `msg="job done"` is unambiguous while `job_key=nightly` stays bare.
 

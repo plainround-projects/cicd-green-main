@@ -62,22 +62,27 @@ Every Python file of the service and of the pipeline is covered below, in the or
 
 #### `src/small_service/__init__.py` and the other `__init__.py` files
 
+<!-- fmt:off -->
 ```python
 """A small service: a time-limited cache and a background job, recorded in PostgreSQL."""
 ```
+<!-- fmt:on -->
 
 This file has one line and that line is a **docstring**: a piece of text in triple quotes (`"""..."""`) placed first in a file (or first in a function or class). Python keeps it as documentation. It is not an instruction. Its presence is what makes the folder `small_service` a *package*, so other files can write `import small_service`.
 
 The other `__init__.py` files are the same idea for their folders. The five in the service are:
 
+<!-- fmt:off -->
 ```python
 """Rules of the service. Depends on nothing outside the standard library."""
 ```
+<!-- fmt:on -->
 
 (`domain/`), and one-line docstrings for `application/`, `infrastructure/` and `interfaces/`. In `pipeline/` there are `pipeline/__init__.py`, `pipeline/core/__init__.py` and `pipeline/adapters/__init__.py`, and `tests/` has its own as well. Each only declares "this folder is a package". Nothing else is in them.
 
 #### `src/small_service/domain/errors.py`: names for the things that can go wrong
 
+<!-- fmt:off -->
 ```python
 """Named errors of the domain."""
 
@@ -99,6 +104,7 @@ class InvalidJobKeyError(DomainError, ValueError):
 class JobNotStartedError(DomainError, RuntimeError):
     """`Job.wait` was called before `Job.start`."""
 ```
+<!-- fmt:on -->
 
 - **Line 1** is the docstring of the file.
 - **Line 3**, `from __future__ import annotations`, appears at the top of almost every module here. A type hint such as `-> Job` names a class. Without this line Python would try to look the name up the moment it reads the hint, which fails if the class is defined further down the file. With the line, Python just keeps the hint as text and looks nothing up. You can ignore it while reading; it only removes one class of surprise.
@@ -114,6 +120,7 @@ Why bother? Later, the command-line program catches `DomainError` to print a cal
 
 A **cache** keeps the answer to an earlier question so you can give it again without redoing the work. This one forgets an answer after a set time.
 
+<!-- fmt:off -->
 ```python
 """A small time-limited cache. The clock is injected, so expiry is tested without sleeping."""
 
@@ -126,6 +133,7 @@ from dataclasses import dataclass
 from small_service.domain.errors import InvalidTtlError
 
 ```
+<!-- fmt:on -->
 
 - **Line 3** is the `from __future__` line explained above.
 - **Line 5**, `import threading`, makes the standard library's threading tools available under the name `threading`.
@@ -133,6 +141,7 @@ from small_service.domain.errors import InvalidTtlError
 - **Line 7** imports `dataclass`, a *decorator* (explained next).
 - **Line 9** imports our own `InvalidTtlError` from the file just described. The long dotted name is the path: package `small_service`, sub-package `domain`, module `errors`.
 
+<!-- fmt:off -->
 ```python
 @dataclass(frozen=True, slots=True)
 class _Entry[V]:
@@ -140,11 +149,13 @@ class _Entry[V]:
     expires_at: float
 
 ```
+<!-- fmt:on -->
 
 - **Line 12** is a **decorator**: a line that starts with `@` and changes the class or function written right below it. `@dataclass` tells Python: look at the fields I list in the body and write the boring methods for me (the one that sets the fields when an object is made, one that prints the object, one that compares two objects). The words in brackets change how: `frozen=True` forbids changing a field after the object is made (trying raises an error), so an entry cannot be altered by accident or by another thread. `slots=True` stores the fields in a fixed, compact layout and makes a mistyped field name an error.
 - **Line 13**, `class _Entry[V]:`. The leading underscore is a convention meaning "private to this file; do not use from outside". The `[V]` is new in Python 3.12: it declares a **type parameter**, a placeholder for "some type, to be decided by whoever uses it". An entry holds a value of *some* type `V`.
 - **Lines 14 and 15** are the fields. `value: V` says a field named `value` of type `V`. `expires_at: float` says the moment (a number of seconds on a clock) when this entry stops being valid.
 
+<!-- fmt:off -->
 ```python
 class TimedCache[K, V]:
     """Maps keys to values that expire `ttl_seconds` after they were stored. Safe to share between threads."""
@@ -158,6 +169,7 @@ class TimedCache[K, V]:
         self._entries: dict[K, _Entry[V]] = {}
         self._lock = threading.Lock()
 ```
+<!-- fmt:on -->
 
 - **Line 18**, `class TimedCache[K, V]:`, makes a class with two placeholders: `K` for the type of keys and `V` for the type of values. A user writes `TimedCache[str, JobRecord]` to say "text keys, job-record values". The hint changes nothing at run time; it lets the type checker catch a mistake such as storing a number where a record belongs.
 - **Line 21**: `def __init__(...)` defines a function inside a class. Such a function is a **method**. The name `__init__` is special: Python runs it automatically when someone creates an object with `TimedCache(...)`. The first parameter, `self`, is the object being made; Python passes it automatically so the method can store things on the object.
@@ -167,17 +179,20 @@ class TimedCache[K, V]:
 - **Line 27**: `self._entries: dict[K, _Entry[V]] = {}`. `{}` is an empty dictionary. The part after the colon is a type hint: a dictionary from `K` to `_Entry[V]`. This dictionary holds the cache's contents.
 - **Line 28**: `threading.Lock()` makes a lock. Many threads may call this cache at once, because the server handles requests on several threads, so every method that touches `_entries` takes the lock first.
 
+<!-- fmt:off -->
 ```python
     def put(self, key: K, value: V) -> None:
         """Store `value`, replacing any earlier value and restarting its time to live."""
         with self._lock:
             self._entries[key] = _Entry(value, self._clock() + self._ttl_seconds)
 ```
+<!-- fmt:on -->
 
 - **Line 30**: `put` takes a key and a value and returns `None` (the `-> None`), which means "nothing useful".
 - **Line 32**: `with self._lock:` is a **context manager**. `with` runs some set-up when the block starts (here: wait until the lock is free and take it) and some clean-up when the block ends *in every case*, even if an error happened inside (here: release the lock). That guarantee is why `with` is used instead of taking and releasing by hand.
 - **Line 33**: the entry is stored under `key`. It expires at "now plus the time to live": `self._clock()` calls the clock function, and `+ self._ttl_seconds` adds the lifetime. Storing again under an existing key *replaces* the old entry, which restarts the lifetime.
 
+<!-- fmt:off -->
 ```python
     def get(self, key: K) -> V | None:
         """Return the stored value, or None when the key is missing or has expired (an expired entry is dropped)."""
@@ -190,6 +205,7 @@ class TimedCache[K, V]:
                 return None
             return entry.value
 ```
+<!-- fmt:on -->
 
 - **Line 35**: the return type `V | None` means "a value of type V, or the special value `None`". `None` is Python's way to say "no value".
 - **Line 38**: `self._entries.get(key)` looks the key up and returns `None` instead of failing when the key is missing.
@@ -197,6 +213,7 @@ class TimedCache[K, V]:
 - **Line 41**: `entry.expires_at <= self._clock()` asks: has the entry's deadline passed? If so, **line 42** deletes it (`del dictionary[key]`) and **line 43** reports "nothing". The cache therefore cleans an old entry the moment someone asks for it. **Line 44** returns the stored value.
 - Because all of this happens inside `with self._lock`, no other thread can change the dictionary in the middle.
 
+<!-- fmt:off -->
 ```python
     def purge(self) -> int:
         """Drop every expired entry and return how many were dropped."""
@@ -212,6 +229,7 @@ class TimedCache[K, V]:
         with self._lock:
             return len(self._entries)
 ```
+<!-- fmt:on -->
 
 - **Line 50** is a **list comprehension**: a compact way to build a list. Read it as "make a list of `key` for each `key, entry` pair in `self._entries.items()`, but only if the entry has expired". `.items()` gives the dictionary's pairs. Collecting the expired keys *first* and deleting them afterwards (lines 51 and 52, a `for` loop that repeats its body once per item) avoids changing a dictionary while looping over it, which Python forbids.
 - **Line 53** returns how many were removed: `len(expired)` is the length of the list.
@@ -219,6 +237,7 @@ class TimedCache[K, V]:
 
 #### `src/small_service/domain/jobs.py`: the pretend background job
 
+<!-- fmt:off -->
 ```python
 """A background job that takes between 50 and 112.5 ms, as the lesson's planted timing assumption needs."""
 
@@ -251,6 +270,7 @@ def lesson_delay() -> float:
     return random.uniform(MIN_JOB_SECONDS, MAX_JOB_SECONDS)  # noqa: S311 - simulated work time, not a secret
 
 ```
+<!-- fmt:on -->
 
 - **Lines 5 to 11**: more imports. `random` gives random numbers, `time` gives the clock and `sleep`, `datetime` is a date-and-time type, and `Final` marks a name that must never be reassigned.
 - **Lines 15 and 16** are **constants**: names written in capitals by convention, giving the job's shortest and longest duration in seconds (50 ms and 112.5 ms). A millisecond is a thousandth of a second.
@@ -258,6 +278,7 @@ def lesson_delay() -> float:
 - **Lines 20 to 24**: `validate_job_key`. `not 1 <= len(key) <= 64` is a chained comparison: "the length is at least 1 and at most 64". `set(key) <= _KEY_CHARACTERS` asks whether the set of the key's characters is a *subset* of the allowed characters. If either rule is broken the function raises `InvalidJobKeyError`; otherwise it hands the key back unchanged, so a caller can write `key = validate_job_key(text)`. `{key!r}` inside an f-string prints the key with quotes, which shows invisible mistakes such as a trailing space.
 - **Lines 27 to 29**: `lesson_delay` returns a random number between the two limits. The comment after `# noqa: S311` tells the linter to stay quiet about a warning ("random is unsafe for secrets"), with the reason: this is pretend work time, not a secret ([ruff.md](ruff.md)). A `#` starts a **comment**: text for humans that Python ignores.
 
+<!-- fmt:off -->
 ```python
 @dataclass(frozen=True, slots=True)
 class JobRecord:
@@ -269,9 +290,11 @@ class JobRecord:
     finished: bool
 
 ```
+<!-- fmt:on -->
 
 `JobRecord` is a frozen data holder like `_Entry`, with four fields: the job's key, when it was recorded (`datetime`), how long it took in milliseconds, and whether it finished before the wait ran out.
 
+<!-- fmt:off -->
 ```python
 class Job:
     """Runs `sleep(delay())` on a thread. `done` is set when the work ends; `wait` blocks until then."""
@@ -309,6 +332,7 @@ class Job:
             raise JobNotStartedError("start() the job before waiting for it")
         return self._finished.wait(timeout_seconds)
 ```
+<!-- fmt:on -->
 
 - **Lines 45 to 54**: `__init__` takes two optional functions. `delay: Callable[[], float] = lesson_delay` means "a function returning a float, and if you pass nothing, use `lesson_delay`". The `= value` after a parameter is a **default**. `sleep` defaults to the real `time.sleep`. Tests pass fakes for both, so a test of the job does not wait and does not depend on luck.
 - **Line 53**: `threading.Event()` is a small flag shared between threads. One thread can *set* it ("I am done") and another can wait until it is set. **Line 54** starts `_thread` as `None`; it will hold the worker thread once started. The type `threading.Thread | None` says so.
@@ -318,6 +342,7 @@ class Job:
 
 #### `src/small_service/application/ports.py`: what the outside world must offer
 
+<!-- fmt:off -->
 ```python
 """What the use cases need from the outside world."""
 
@@ -340,12 +365,14 @@ class JobStore(Protocol):
     def ping(self) -> None:
         """Raise when the store cannot be reached."""
 ```
+<!-- fmt:on -->
 
 - **Line 5**: `Protocol` comes from `typing`, the module of type-hint tools.
 - **Lines 10 to 20**: `class JobStore(Protocol)` is an **interface**: a list of methods an object must have to be used as a job store. Each method has a signature and a docstring but no real body (the docstring *is* the body). `save(record)` stores one run; `recent(limit)` returns the newest runs; `ping()` raises an error if the store cannot be reached. The class is named a *port* because it is the plug-shaped hole in the application layer that an adapter (the PostgreSQL store, or a fake in a test) plugs into. A class does not have to say "I implement JobStore". If it has methods with these names and shapes, the type checker accepts it. That is what `Protocol` means.
 
 #### `src/small_service/application/queries.py`: two read-only use cases
 
+<!-- fmt:off -->
 ```python
 """Read-side use cases."""
 
@@ -370,12 +397,14 @@ def is_healthy(store: JobStore) -> bool:
         return False
     return True
 ```
+<!-- fmt:on -->
 
 - **Lines 9 to 13**: `recent_runs` checks that `limit` is at least 1 (raising Python's built-in `ValueError` otherwise) and asks the store for the newest runs. The return type `list[JobRecord]` is a list of records.
 - **Lines 16 to 22**: `is_healthy`. `try:` starts a block of code that might fail. If it fails, Python jumps to the matching `except` block. Here `store.ping()` is tried; if *anything* goes wrong (`except Exception`) the function returns `False`. If nothing went wrong it continues to `return True`. The comment explains the choice: for a health check every failure means "not healthy"; the caller is responsible for logging the reason.
 
 #### `src/small_service/application/run_job.py`: the main use case
 
+<!-- fmt:off -->
 ```python
 """Run a job once per key within the cache's time to live and record the outcome."""
 
@@ -429,6 +458,7 @@ class JobRunner:
         self._cache.put(key, record)
         return record, False
 ```
+<!-- fmt:on -->
 
 - **Lines 5 to 10**: imports. Notice that the application layer imports the *domain* (`TimedCache`, `Job`, `JobRecord`, `validate_job_key`) and its own `JobStore` port, and nothing from the database.
 - **Lines 13 to 14**: the class and its docstring.
@@ -444,6 +474,7 @@ class JobRunner:
 
 An **environment variable** is a named piece of text that the program that started yours hands over. In a terminal, `LOG_LEVEL=DEBUG some-command` starts `some-command` with a variable `LOG_LEVEL` whose value is `DEBUG`. Programs read them to learn their settings without those settings being written into the code ([dotenv.md](dotenv.md)).
 
+<!-- fmt:off -->
 ```python
 """Configuration from the environment, validated once at startup (twelve-factor)."""
 
@@ -481,12 +512,14 @@ def _positive_number(environ: Mapping[str, str], name: str, default: float) -> f
     return value
 
 ```
+<!-- fmt:on -->
 
 - **Line 5**: `import os` gives access to `os.environ`, the dictionary of all environment variables. `import re` gives regular expressions. A **regular expression** is a pattern that describes text. **Line 12**, `re.compile(r"^[\w.\-]+$")`, builds the pattern: `^` is the start; `[\w.\-]` is one character from "a letter, digit or underscore (`\w`), a dot, or a dash"; `+` means "one or more of those"; `$` is the end. So it accepts a host name like `db.example-1` and refuses anything with a space or a slash. The `r` before the quotes makes it a *raw* string, in which a backslash is just a backslash.
 - **Lines 15 to 16**: `ConfigurationError(ValueError)` is the error raised for a bad setting.
 - **Lines 19 to 23**: `_text` reads one variable. `environ.get(name, default if default is not None else "")` takes the variable's value or, if it is missing, a default (or empty text). `.strip()` removes spaces at both ends. If the result is empty it raises an error naming the variable. The type `Mapping[str, str]` means "anything that behaves like a read-only dictionary of text to text", which is why tests can pass an ordinary dictionary instead of the real environment.
 - **Lines 26 to 34**: `_positive_number` reads a variable, converts it with `float(raw)`, and turns a failure into a `ConfigurationError`. `raise ... from None` hides the confusing original `ValueError` so the user sees only our message. It refuses zero and negative numbers.
 
+<!-- fmt:off -->
 ```python
 @dataclass(frozen=True, slots=True)
 class Settings:
@@ -533,6 +566,7 @@ class Settings:
             f"@{self.postgres_host}:{self.postgres_port}/{quote(self.postgres_db, safe='')}"
         )
 ```
+<!-- fmt:on -->
 
 - **Lines 37 to 48**: `Settings` is a frozen dataclass: all the settings in one object, validated once at start-up. Its eight fields are the database's host, port, name, user and password, the log level, the cache lifetime and the job timeout.
 - **Lines 50 to 52**: `@classmethod` makes `from_env` a method that belongs to the *class*, not to one object: it is called as `Settings.from_env()` and its first parameter, `cls`, is the class itself. It builds and returns a `Settings`. The parameter `environ=None` means "use the real environment unless a dictionary is passed". Line 53 picks one or the other: `os.environ if environ is None else environ`.
@@ -546,6 +580,7 @@ class Settings:
 
 A **log** is a record of what a program did, written as it runs. This module formats each event as one line of `key=value` words (the style is called *logfmt*), which people and tools can both read.
 
+<!-- fmt:off -->
 ```python
 """Structured logging: one logfmt line per event (`ts=... level=... logger=... msg=... key=value`)."""
 
@@ -581,11 +616,13 @@ class LogfmtFormatter(logging.Formatter):
         return " ".join(parts)
 
 ```
+<!-- fmt:on -->
 
 - **Lines 12 to 14**: `_quote` turns any value into text, and wraps it in quotes (using `json.dumps`, which also escapes special characters) if the text is empty or contains a space, an equals sign, a quote or a newline. `any(char in text for char in ' ="\n')` is `True` if at least one of those characters is present. The expression `A if condition else B` is Python's one-line choice.
 - **Lines 17 to 32**: `LogfmtFormatter` extends the standard `logging.Formatter`, the part that turns an event (a `LogRecord`) into text. Overriding `format` replaces its behaviour. `record.created` is when the event happened, in seconds since 1970; `datetime.fromtimestamp(..., tz=UTC).isoformat(timespec="milliseconds")` turns it into text like `2026-10-27T10:00:00.123+00:00`. UTC is the world reference time zone, so logs from different machines line up.
 - **Lines 23 to 28** build a list of `key=value` pieces: `ts`, `level`, `logger` (the name of the part of the program that spoke) and `msg`. **Line 29** adds extra fields: `getattr(record, "fields", {})` reads an attribute that may not exist, falling back to an empty dictionary. `parts.extend(generator)` appends many items. **Lines 30 and 31** add the exception text, if an error is being reported. **Line 32** joins the pieces with spaces.
 
+<!-- fmt:off -->
 ```python
 def fields(**values: Any) -> dict[str, Any]:
     """Use as `logger.info("message", extra=fields(job_key=...))` to attach key=value pairs."""
@@ -600,12 +637,14 @@ def configure_logging(level: str, stream: TextIO | None = None) -> None:
     root.handlers[:] = [handler]
     root.setLevel(level)
 ```
+<!-- fmt:on -->
 
 - **Lines 35 to 37**: `fields(**values)`. The two stars collect all the keyword arguments into a dictionary. A caller writes `logger.info("message", extra=fields(job_key="a"))`, and the formatter later finds `fields` on the record.
 - **Lines 40 to 46**: `configure_logging` makes a *handler* (where log lines go: `sys.stderr`, the stream for diagnostics, unless a stream is given), gives it the formatter, and installs it on the **root logger**, the one every other logger passes its events up to. `root.handlers[:] = [handler]` *replaces* any existing handlers, so calling the function twice does not print every line twice. `root.setLevel(level)` sets the minimum importance that is shown.
 
 #### `src/small_service/infrastructure/retry.py`: trying again after a failure
 
+<!-- fmt:off -->
 ```python
 """Retry with exponential backoff and jitter, for calls that cross the network."""
 
@@ -648,6 +687,7 @@ def retry[T](
             sleep(delay)
     raise AssertionError("unreachable")  # pragma: no cover - the loop always returns or raises
 ```
+<!-- fmt:on -->
 
 - A network call can fail for a moment and then work. **Retrying with backoff** means: try, wait a little, try again, wait longer each time. **Jitter** is a small random extra wait so that many callers do not all retry at the same instant.
 - **Line 15**: `def retry[T](...) -> T` declares a generic function. Whatever type `operation` returns, `retry` returns the same type.
@@ -658,6 +698,7 @@ def retry[T](
 
 #### `src/small_service/infrastructure/postgres_store.py`: the PostgreSQL store
 
+<!-- fmt:off -->
 ```python
 """The `JobStore` port on PostgreSQL (sql/001_schema.sql creates the table)."""
 
@@ -709,6 +750,7 @@ class PostgresJobStore:
         with self._connect() as connection:
             connection.execute("SELECT 1")
 ```
+<!-- fmt:on -->
 
 - **Line 7**: `import psycopg` is the library that talks to PostgreSQL ([psycopg.md](psycopg.md)). Only this file in the service imports it. A rule enforced by [import-linter.md](import-linter.md) keeps the domain and application layers free of it.
 - **Lines 15 to 20**: the class stores the connection string. **Lines 22 to 26**: `_connect` opens a connection, using `retry` so a brief outage is survived, retrying only when psycopg raises `OperationalError` (the error for "could not connect"). `lambda: ...` makes a tiny nameless function, here one that connects with a five-second timeout.
@@ -720,6 +762,7 @@ class PostgresJobStore:
 
 A **command-line interface (CLI)** lets a person run the program by typing its name and some words (**arguments**).
 
+<!-- fmt:off -->
 ```python
 """`small-service`: run a job, read the history, check health, smoke-test an installed build."""
 
@@ -768,11 +811,13 @@ def installed_version() -> str:
     return metadata.version("cicd-green-main")
 
 ```
+<!-- fmt:on -->
 
 - **Line 5**: `argparse` is the standard library's argument reader. **Line 22**: `logging.getLogger("small_service")` gets the named logger this module writes to. **Lines 24 to 26**: three constants for **exit codes**. When a program ends it hands a number back to whoever started it: 0 means success, anything else means failure. Here 1 means "the command failed", 2 means "you used it wrongly".
 - **Lines 29 to 40**: `build_parser` describes the command. `add_subparsers` creates sub-commands: `run-job KEY`, `history [--limit N]`, `health`, `smoke`, `version`. `add_argument("key", help=...)` adds a required word; `add_argument("--limit", type=int, default=5)` adds an optional named setting converted to a whole number. `required=True` on the sub-commands means omitting one is an error. The function is separate so tests can use it.
 - **Lines 43 to 45**: `installed_version` asks the installed package for its version number (`importlib.metadata`).
 
+<!-- fmt:off -->
 ```python
 def _runner(settings: Settings) -> tuple[JobRunner, PostgresJobStore]:
     store = PostgresJobStore(settings.dsn)
@@ -792,10 +837,12 @@ def _print_record(record: JobRecord, from_cache: bool) -> None:
     source = "cache" if from_cache else "run"
     print(f"{record.job_key}: finished={record.finished} duration_ms={record.duration_ms} source={source}")
 ```
+<!-- fmt:on -->
 
 - **Lines 48 to 59**: `_runner` builds the real objects: the PostgreSQL store, a cache that uses `time.monotonic` as its clock, and the `JobRunner` with `Job` as the job factory, `datetime.now(UTC)` for the time and the settings' timeout. This is where everything is wired together; it is the only place that knows both the real clock and the real database.
 - **Lines 62 to 64**: `_print_record` writes one line: `print(f"...")` writes text to the screen (standard output).
 
+<!-- fmt:off -->
 ```python
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point. Returns the exit code instead of exiting, so tests can call it."""
@@ -846,6 +893,7 @@ def _smoke(runner: JobRunner, store: PostgresJobStore) -> int:
     print(f"version={installed_version()} {summary}")
     return EXIT_OK if ok else EXIT_FAILED
 ```
+<!-- fmt:on -->
 
 - **Lines 67 to 87**: `main` is the entry point. It returns an exit code instead of ending the program itself, so a test can call it and check the number. `argv: Sequence[str] | None = None` lets a test pass the words; `None` makes `parse_args` use the real command line. The `version` command is answered before settings are loaded, so it works without a database password. `Settings.from_env()` failing prints `configuration error: ...` to `sys.stderr` and returns 2. Then logging is set up, `_dispatch` runs, and the two `except` blocks sort failures: a `DomainError` is the caller's mistake (print a calm message, return 2); anything else is logged with its full trace by `_log.exception` and returns 1.
 - **Lines 90 to 103**: `_dispatch` chooses what to do for each sub-command. `health` prints `ok` or `database unreachable` and returns 0 or 1. `run-job` prints the record; the leading `*` in `_print_record(*runner.run(args.key))` spreads the returned tuple into two arguments. `history` prints each record with its time formatted by `f"{record.recorded_at:%Y-%m-%d %H:%M:%S}"` (the part after the colon is a date format).
@@ -856,15 +904,18 @@ def _smoke(runner: JobRunner, store: PostgresJobStore) -> int:
 
 #### `pipeline/__init__.py` and `pipeline/__main__.py`
 
+<!-- fmt:off -->
 ```python
 """The pipeline's own code: versioning, checksums, the run log, flaky-test detection, workflow lint, the local runner.
 
 The same commands run in GitHub Actions (see .github/workflows/ci.yml) and on a laptop (`make run`).
 """
 ```
+<!-- fmt:on -->
 
 The package's docstring (four lines). It says the same commands run in GitHub Actions and on a laptop (`make run`).
 
+<!-- fmt:off -->
 ```python
 """`python -m pipeline`."""
 
@@ -874,6 +925,7 @@ from pipeline.cli import main
 
 sys.exit(main())
 ```
+<!-- fmt:on -->
 
 - A package that contains a file named `__main__.py` can be *run*: typing `python -m pipeline` (the `-m` means "run this module") runs this file.
 - **Line 3** imports `sys`, the module for talking to the interpreter itself. **Line 5** imports the function `main` from `pipeline/cli.py`.
@@ -881,6 +933,7 @@ sys.exit(main())
 
 #### `pipeline/cli.py`: the command `python -m pipeline`
 
+<!-- fmt:off -->
 ```python
 """`python -m pipeline <command>`: the pipeline's steps, the same on a laptop and in GitHub Actions."""
 
@@ -903,11 +956,13 @@ _log = logging.getLogger("pipeline")
 ROOT = Path(__file__).resolve().parent.parent
 QUARANTINE_JOBS = ("quarantine",)
 ```
+<!-- fmt:on -->
 
 - **Lines 5 to 11** are imports from the standard library: `argparse` (reads the command line), `json`, `logging`, `shlex` (splits a string into words the way a shell does), `sys`, `Sequence` (a type hint meaning "a list-like thing") and `Path`. `pathlib.Path` represents a file or folder location as an object: `Path("a") / "b"` joins parts with the right slash, `.read_text()` reads a file, `.glob("*.yml")` finds files by pattern.
 - **Lines 13 to 16** import the pipeline's own parts. `from pipeline.adapters import builder, gate, git, github, local_runner` imports five modules at once. The list shows the layering: the CLI (outermost) uses both adapters and core.
 - **Line 18** gets a logger named `pipeline`. **Line 19**: `Path(__file__)` is the location of this very file (`__file__` is a name Python provides); `.resolve()` makes it absolute; `.parent.parent` goes up two folders, from `pipeline/cli.py` to the repository root. **Line 20**: the names of jobs allowed to fail without failing the pipeline: only `quarantine`.
 
+<!-- fmt:off -->
 ```python
 def build_parser() -> argparse.ArgumentParser:
     """The argument parser; exposed so tests can drive it."""
@@ -951,6 +1006,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--checks", default="make check", help="the checks to run on the commit, as one string")
     return parser
 ```
+<!-- fmt:on -->
 
 - `argparse.ArgumentParser(prog=..., description=__doc__)` creates the parser; `__doc__` is the file's docstring. `parser.add_subparsers(dest="command", required=True)` makes sub-commands, and `dest="command"` says the chosen sub-command's name is stored in `args.command`.
 - Each `commands.add_parser("name", help="...")` registers one sub-command and its help text (shown by `--help`). Most take options:
@@ -963,6 +1019,7 @@ def build_parser() -> argparse.ArgumentParser:
   - `metavar="OWNER/REPO"` only changes how the placeholder is shown in help.
 - The sub-commands are: `version`, `build`, `verify` (check a file's checksum), `run` (the whole pipeline locally), `hunt` (repeat the domain tests many times), `bench` (time both pipeline variants), `flaky` (read the log for flaky tests), `import-gh-runs` (turn `gh run list` output into log rows), `protection` (print or apply branch protection), `lint-workflows`, `check-contract` and `gate` (run checks on a commit and, if they pass, post a green status).
 
+<!-- fmt:off -->
 ```python
 def _print_outcomes(outcomes: Sequence[Outcome], record: runlog.RunRecord) -> None:
     for outcome in sorted(outcomes, key=lambda item: item.name):
@@ -983,10 +1040,12 @@ def _run(args: argparse.Namespace) -> int:
     _print_outcomes(outcomes, record)
     return 0 if record.result == runlog.SUCCESS else 1
 ```
+<!-- fmt:on -->
 
 - `_print_outcomes` prints one line per finished job. `sorted(outcomes, key=lambda item: item.name)` sorts by name: `lambda item: item.name` is a tiny function that says how to sort. The line `f"{outcome.name:<12} {verdict:<7} ..."` uses format codes after the colon: `:<12` pads on the right to 12 characters (left-aligned), `:>7` pads on the left (right-aligned). `required` is true for the four required jobs (and the `sequential` variant, a single job).
 - `_run` splits `--only` at commas into a `frozenset` (an unchangeable set), builds the options, runs the pipeline and prints. It returns 0 if the run succeeded and 1 otherwise: `0 if condition else 1`.
 
+<!-- fmt:off -->
 ```python
 def _bench(args: argparse.Namespace) -> int:
     for variant in ("sequential", "parallel"):
@@ -1013,10 +1072,12 @@ def _lint_workflows() -> int:
     print("workflows ok" if not problems else f"{problems} problem(s)")
     return 1 if problems else 0
 ```
+<!-- fmt:on -->
 
 - `_bench`: two nested `for` loops run each variant `args.runs` times. The loop variable `_` (an underscore) is the convention for "I don't use this value". Afterwards it reads the log and prints the before-and-after table.
 - `_lint_workflows`: `(ROOT / ".github" / "workflows").glob("*.yml")` finds every workflow file. `workflow.load` parses a file ([yaml.md](yaml.md)). Only `ci.yml` has required checks. For each finding it prints `file: CODE message` and counts a problem. A second loop checks the composite actions, which are small reusable step lists. The function returns 1 if there was any problem.
 
+<!-- fmt:off -->
 ```python
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point. Returns the exit code."""
@@ -1077,6 +1138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"gate: checks passed; posted green status for {args.sha[:7]}")
     return 0
 ```
+<!-- fmt:on -->
 
 - `main` parses the arguments, sets up simple logging, and then uses `match args.command:`. A **`match` statement** (Python 3.10 and newer) compares a value with several `case` patterns and runs the first that fits, like a tidy chain of `if`/`elif`.
 - `case "version"`: prints the version this commit would get. It reads `pyproject.toml`, asks Git for the current commit and whether the tree has uncommitted changes, and combines them ([python-packaging.md](python-packaging.md)).
@@ -1086,6 +1148,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 #### `pipeline/core/version.py`: one commit, one version
 
+<!-- fmt:off -->
 ```python
 """Version a build from its commit, so one commit always gives one version (`0.1.0+3fa91bc`)."""
 
@@ -1127,6 +1190,7 @@ def stamp_pyproject(pyproject_text: str, version: str) -> str:
         raise VersionError("pyproject.toml has no version line to stamp")
     return stamped
 ```
+<!-- fmt:on -->
 
 - **Line 6**: `tomllib` is the standard library's reader for TOML files ([toml.md](toml.md)).
 - **Lines 8 to 10**: three compiled patterns. `_SHA`: 7 to 40 characters from `0-9a-f` (a commit id). `_SEMVER`: three numbers joined by dots (`\d+` means one or more digits). `_VERSION_LINE`: a line that starts with `version =` and a quoted value; `re.MULTILINE` lets `^` match at the start of every line, not only of the whole text. The parentheses make a **group**, a part of the match we can reuse.
@@ -1138,6 +1202,7 @@ def stamp_pyproject(pyproject_text: str, version: str) -> str:
 
 A **checksum** (here SHA-256) is a long number computed from a file's bytes. Any change to the file, even one bit, gives a completely different number, so two files with the same checksum are the same file.
 
+<!-- fmt:off -->
 ```python
 """SHA-256 of a build artifact, and the check every job that uses it must pass."""
 
@@ -1184,6 +1249,7 @@ def verify(path: Path, expected: str) -> str:
         raise ChecksumMismatchError(f"{path.name}: expected sha256 {expected}, found {actual}")
     return actual
 ```
+<!-- fmt:on -->
 
 - **Line 5**: `hashlib` computes checksums. **Line 8**: `_CHUNK = 1024 * 1024` is one mebibyte.
 - **Lines 11 to 12**: `ChecksumMismatchError(Exception)` is the error raised when a file is not what was expected.
@@ -1194,6 +1260,7 @@ def verify(path: Path, expected: str) -> str:
 
 #### `pipeline/core/runlog.py`: the run log
 
+<!-- fmt:off -->
 ```python
 """The run log (`runs.csv`): one row per pipeline run, and the numbers the lesson asks for."""
 
@@ -1256,12 +1323,14 @@ def append(path: Path, record: RunRecord) -> None:
     """Append one row, writing the header first when the file is new."""
     is_new = not path.exists() or path.stat().st_size == 0
 ```
+<!-- fmt:on -->
 
 - **Lines 5 to 10**: `csv` reads and writes comma-separated tables ([csv.md](csv.md)); `statistics` has the median. **Line 12**: `HEADER` is a tuple of the seven column names. **Lines 13 to 14**: the two possible results, `success` and `failure`.
 - **Lines 17 to 26**: `RunRecord` is a frozen dataclass: one pipeline run (number, commit, seconds, result, variant, the failed test ids and the first message line). Fields with `= ()` or `= ""` have defaults and can be left out.
 - **Lines 29 to 36**: `Summary`, the count, median and slowest time of a set of runs.
 - **Lines 39 to 54**: `read`. `if not path.exists(): return []` treats a missing file as an empty log. `csv.DictReader(handle)` gives each row as a dictionary keyed by the header. The list comprehension builds a `RunRecord` per row: `int(row["run"])` and `float(row["seconds"])` convert text to numbers; `row.get("variant", "")` tolerates a missing column; `tuple(filter(None, row.get(...).split(";")))` splits the failed-test cell at semicolons and throws away empty pieces.
 
+<!-- fmt:off -->
 ```python
 
 def append(path: Path, record: RunRecord) -> None:
@@ -1318,6 +1387,7 @@ def format_comparison(before: Summary | None, after: Summary | None) -> str:
         lines.append(f"median under half of the starting time: {verdict}")
     return "\n".join(lines)
 ```
+<!-- fmt:on -->
 
 - **Lines 57 to 74**: `append` writes one row. `is_new` is true if the file is missing or empty, in which case the header is written first. `open("a", newline="")` opens for **appending** (adding at the end); `newline=""` stops Python changing line endings that the csv module handles. `f"{record.seconds:.1f}"` rounds to one decimal. The message has newlines replaced by spaces and is cut to 160 characters with a slice.
 - **Lines 77 to 79**: `next_run_number` is the highest run number plus one; `max(..., default=0)` handles an empty log.
@@ -1329,6 +1399,7 @@ def format_comparison(before: Summary | None, after: Summary | None) -> str:
 
 A **flaky test** sometimes passes and sometimes fails on the same code. Rerunning until it is green hides it; counting how often it fails shows it.
 
+<!-- fmt:off -->
 ```python
 """Find a flaky test in the run log instead of rerunning until green."""
 
@@ -1406,6 +1477,7 @@ def format_report(records: Sequence[RunRecord]) -> str:
         lines.extend(f"  failed {count} times with: {message}" for message, count in report.messages)
     return "\n".join(lines)
 ```
+<!-- fmt:on -->
 
 - **Line 5**: `xml.etree.ElementTree` reads XML files ([junit-xml.md](junit-xml.md)). **Line 6**: `Counter` counts items; `defaultdict` is a dictionary that creates a default value (here an empty set) the first time a key is used.
 - **Lines 13 to 18**: `FailedTest`, a test id and the first line of its message. **Lines 21 to 33**: `FlakeReport` with a computed property `rate`: failures divided by runs, `0.0` if there are no runs.
@@ -1416,6 +1488,7 @@ def format_report(records: Sequence[RunRecord]) -> str:
 
 #### `pipeline/core/ghruns.py`: GitHub's run history as log rows
 
+<!-- fmt:off -->
 ```python
 """Turn `gh run list --json databaseId,headSha,conclusion,createdAt,updatedAt` into run-log rows."""
 
@@ -1447,11 +1520,13 @@ def parse_gh_runs(json_text: str, variant: str = "github") -> list[RunRecord]:
         )
     return records
 ```
+<!-- fmt:on -->
 
 - **Lines 11 to 29**: `parse_gh_runs` takes the JSON that `gh run list --json ...` prints ([json.md](json.md)). `json.loads` turns text into Python lists and dictionaries. Runs are sorted by `createdAt` (ISO 8601 date text sorts correctly as plain text). A run with no `conclusion` is still going and is skipped (`continue` jumps to the next loop item). `datetime.fromisoformat(... .replace("Z", "+00:00"))` parses the times (`Z` means UTC). The duration is `(ended - started).total_seconds()`: subtracting two datetimes gives a `timedelta`. The commit is cut to 7 characters; anything other than `success` counts as a failure.
 
 #### `pipeline/core/protection.py`: the branch-protection payload
 
+<!-- fmt:off -->
 ```python
 """The branch-protection settings that make the pipeline a required check on `main`."""
 
@@ -1480,12 +1555,14 @@ def branch_protection(checks: Sequence[str] = REQUIRED_CHECKS) -> dict[str, Any]
         "allow_deletions": False,
     }
 ```
+<!-- fmt:on -->
 
 - **Line 8**: `REQUIRED_CHECKS = ("build", "lint", "unit", "integration")` is the list of job names GitHub must require.
 - **Lines 11 to 26**: `branch_protection` returns a dictionary shaped like the body of GitHub's API call that sets protection on a branch. `"strict": True` means the branch must be up to date before merging; `"enforce_admins": True` applies the rules to the repository owner too; `required_approving_review_count: 0` requires a pull request without requiring a person to approve it; `"restrictions": None` (JSON `null`) adds no list of who may push; force pushes and deletion are off. `list(checks)` copies the tuple into a list because JSON has lists, not tuples. An empty list of checks raises `ValueError`.
 
 #### `pipeline/core/contract.py`: checking the README's ten lines
 
+<!-- fmt:off -->
 ```python
 """Check the README's pipeline contract: short, concrete, and it says what to do when `main` is red."""
 
@@ -1529,6 +1606,7 @@ def check(readme: str) -> list[str]:
         problems.append("it must give the time the required checks should take, in minutes")
     return problems
 ```
+<!-- fmt:on -->
 
 - **Line 8**: `_HEADING` matches a line that starts with `## ` (a Markdown level-2 heading). **Lines 9 and 10** name the heading to find and the limit of ten lines.
 - **Lines 13 to 26**: `contract_lines` splits the README into lines, finds the heading with `lines.index(...)` (which raises `ValueError` when absent, caught to return `[]`), then collects the non-empty lines until the next `## ` heading. `line.strip()` is empty text (false) for a blank line.
@@ -1536,6 +1614,7 @@ def check(readme: str) -> list[str]:
 
 #### `pipeline/core/workflow.py`: the workflow linter
 
+<!-- fmt:off -->
 ```python
 """Lint a GitHub Actions workflow for the mistakes the lesson lists, so they fail a test and not a merge."""
 
@@ -1575,11 +1654,13 @@ def job_names(document: Mapping[str, Any]) -> dict[str, str]:
     return {job_id: str(job.get("name", job_id)) for job_id, job in document.get("jobs", {}).items()}
 
 ```
+<!-- fmt:on -->
 
 - **Line 10**: `import yaml` is PyYAML ([yaml.md](yaml.md)). **Line 12**: `_PINNED` matches `owner/name@` followed by exactly 40 hexadecimal characters (a full commit id). **Line 13**: `_LATEST` finds moving names: `:latest`, `@main`, `@master`, `@latest` (`\b` is a word boundary).
 - **Lines 16 to 21**: `Finding(code, message)`. **Lines 24 to 31**: `load` parses a workflow with `yaml.safe_load`, which builds only plain data and never runs code. `if True in document` repairs a YAML quirk: the key `on:` is read as the boolean `True`, so it is moved back under the string `"on"`. `isinstance(document, dict)` checks the type.
 - **Lines 34 to 36**: `job_names` maps each job id to the name GitHub shows for it, the job's `name:` or else its id: the name branch protection checks.
 
+<!-- fmt:off -->
 ```python
 def lint(document: Mapping[str, Any], required_checks: Sequence[str], quarantine_jobs: Sequence[str]) -> list[Finding]:
     """Check one workflow. An empty list means it passes every rule.
@@ -1629,6 +1710,7 @@ def lint_composite(document: Mapping[str, Any]) -> list[Finding]:
             findings.append(Finding("WF005", f"{used!r} is not pinned to a full commit SHA"))
     return findings
 ```
+<!-- fmt:on -->
 
 `lint` returns a list of `Finding`s; an empty list means the workflow passes. The rules:
 
@@ -1643,6 +1725,7 @@ def lint_composite(document: Mapping[str, Any]) -> list[Finding]:
 
 A **process** is a running program. A program can start other programs; `subprocess` is the standard library module that does so.
 
+<!-- fmt:off -->
 ```python
 """Run commands as pipeline jobs: sequential steps, a log file per job, jobs in parallel."""
 
@@ -1683,10 +1766,12 @@ class Outcome:
     log: Path
 
 ```
+<!-- fmt:on -->
 
 - **Lines 14 to 19**: `Command` is a program and its arguments (`argv`, a tuple of text), plus extra environment variables (`env`) added to the current ones. `field(default_factory=dict)` gives each object its own empty dictionary as default (a plain `= {}` would be shared by all, a classic Python trap).
 - **Lines 22 to 27**: `Job`, a named tuple of steps that run one after another. **Lines 30 to 37**: `Outcome`, how a job ended (`ok`), how long it took and where its log is.
 
+<!-- fmt:off -->
 ```python
 def run_job(job: Job, cwd: Path, log_dir: Path) -> Outcome:
     """Run the steps, writing each command and its output to `<log_dir>/<job>.log`."""
@@ -1725,6 +1810,7 @@ def run_output(argv: Sequence[str], cwd: Path, env: Mapping[str, str] | None = N
     )
     return result.stdout
 ```
+<!-- fmt:on -->
 
 - **Lines 40 to 62**: `run_job` creates the log folder (`mkdir(parents=True, exist_ok=True)`: create missing parents, no error if it exists), notes the start with `time.monotonic()`, and opens the log file for writing. For each step it writes `$ command`, flushes, and runs `subprocess.run(step.argv, cwd=cwd, env={**os.environ, **step.env}, stdout=handle, stderr=subprocess.STDOUT, check=False)`. Reading it piece by piece: `cwd` is the folder to run in; `{**a, **b}` merges two dictionaries (later wins), giving the current environment plus the step's extras; `stdout=handle` sends the program's normal output to the log file; `stderr=subprocess.STDOUT` sends its error output to the same place; `check=False` means do not raise on failure, because the code reads `returncode` itself. The comment `# noqa: S603 - argv is built by this program, never through a shell` explains why the security warning is fine: no text is ever interpreted by a shell. A non-zero `returncode` is written to the log, the job is marked failed, and `break` leaves the loop: later steps do not run.
 - **Lines 65 to 67**: `submit` hands `run_job` to a **thread pool** (`ThreadPoolExecutor`): a set of worker threads that run submitted functions. The result is a `Future`, a promise of an `Outcome` that will exist later; `future.result()` waits for it.
@@ -1732,6 +1818,7 @@ def run_output(argv: Sequence[str], cwd: Path, env: Mapping[str, str] | None = N
 
 #### `pipeline/adapters/git.py`: the few Git facts the pipeline needs
 
+<!-- fmt:off -->
 ```python
 """The few git facts the pipeline needs."""
 
@@ -1761,11 +1848,13 @@ def changed_paths(repo: Path, base: str, head: str) -> list[str]:
     """Files changed between two commits (three-dot: since `head` branched from `base`)."""
     return run_output(["git", "diff", "--name-only", f"{base}...{head}"], repo).split()
 ```
+<!-- fmt:on -->
 
 Four small functions, each running one Git command through `run_output` ([git.md](git.md)): `head_sha` (`git rev-parse HEAD`: the current commit's id), `commit_epoch` (`git show -s --format=%ct SHA`: the commit time in seconds since 1 January 1970, converted with `int(...)`), `is_dirty` (`git status --porcelain` prints one line per changed or untracked file; any output means "dirty"; `bool(text)` is false only for an empty string) and `changed_paths` (`git diff --name-only base...head` splits the output into names with `.split()`).
 
 #### `pipeline/adapters/builder.py`: building the wheel once
 
+<!-- fmt:off -->
 ```python
 """Build the wheel once, versioned from the commit, with a checksum file next to it."""
 
@@ -1803,10 +1892,12 @@ def build_wheel(root: Path, dist: Path, python: str = sys.executable) -> BuiltAr
     version = build_version(base_version((root / "pyproject.toml").read_text()), sha, git.is_dirty(root))
     with tempfile.TemporaryDirectory(prefix="wheel-build-") as workdir:
 ```
+<!-- fmt:on -->
 
 - **Lines 5 to 9** import `shutil` (copying files and folders) and `tempfile` (temporary folders). **Line 16**: `SUMS_FILE = "SHA256SUMS"`. **Lines 19 to 25**: `BuiltArtifact` holds the wheel's path, version and checksum.
 - **Lines 28 to 34**: `build_wheel(root, dist, python=sys.executable)`. `sys.executable` is the path of the Python running now, so the build uses the same interpreter. It asks Git for the commit, builds the version and, if the tree is dirty, marks it.
 
+<!-- fmt:off -->
 ```python
     with tempfile.TemporaryDirectory(prefix="wheel-build-") as workdir:
         staging = Path(workdir) / "source"
@@ -1830,6 +1921,7 @@ def build_wheel(root: Path, dist: Path, python: str = sys.executable) -> BuiltAr
     (dist / SUMS_FILE).write_text(sums_line(target, digest) + "\n")
     return BuiltArtifact(target, version, digest)
 ```
+<!-- fmt:on -->
 
 - **Line 35**: `with tempfile.TemporaryDirectory(prefix="wheel-build-") as workdir:` creates a temporary folder that is deleted automatically when the block ends.
 - **Lines 36 to 40**: the sources are *copied* into it (`copytree`, ignoring `__pycache__` and `*.egg-info`), together with `README.md` and `LICENSE`, and a copy of `pyproject.toml` with the new version stamped in. The repository itself is never modified.
@@ -1838,6 +1930,7 @@ def build_wheel(root: Path, dist: Path, python: str = sys.executable) -> BuiltAr
 
 #### `pipeline/adapters/gate.py`: a green status that only CI can post
 
+<!-- fmt:off -->
 ```python
 """A local stand-in for "required status checks": CI posts a green status for a commit, and the remote refuses `main`
 without it. See pipeline/hooks/pre-receive and scripts/gate-demo.sh."""
@@ -1867,12 +1960,14 @@ def post_green_status(repo: Path, remote: str, sha: str, token: str) -> None:
     """Push `refs/status/green/<sha>` to `remote`. The remote accepts it only with the CI token as a push option."""
     run_output(["git", "push", "--push-option", f"ci-token={token}", remote, f"{sha}:refs/status/green/{sha}"], repo)
 ```
+<!-- fmt:on -->
 
 - **Lines 14 to 22**: `run_checks_on_commit` checks the commit out into a temporary **worktree** (a second working folder for the same repository: `git worktree add --detach TREE SHA`), runs the given command there with `subprocess.run(..., cwd=tree)` and returns whether it exited with 0. The `try`/`finally` makes sure `git worktree remove --force` runs even if the command fails or raises.
 - **Lines 25 to 27**: `post_green_status` pushes `SHA:refs/status/green/SHA` to the remote, adding `--push-option ci-token=TOKEN`. A *ref* is any name that points at a commit; `refs/status/green/<sha>` is an invented one that the server's hook ([bash-and-sh.md](bash-and-sh.md)) treats as "CI says this commit is green", accepted only with the right token.
 
 #### `pipeline/adapters/github.py`: talking to GitHub with `gh`
 
+<!-- fmt:off -->
 ```python
 """Talk to GitHub through the `gh` CLI (needs `gh auth login`; nothing here runs in the tests)."""
 
@@ -1913,6 +2008,7 @@ def list_runs(repo: str, limit: int) -> str:
     )
     return result.stdout
 ```
+<!-- fmt:on -->
 
 - **Lines 10 to 17**: `apply_branch_protection` runs `gh api -X PUT repos/<repo>/branches/main/protection --input -` and feeds it the JSON on standard input (`input=json.dumps(payload)`). `check=True` raises if `gh` fails. The `# noqa: S607` comments silence a warning about calling `gh` by a partial path.
 - **Lines 20 to 38**: `list_runs` runs `gh run list --repo REPO --limit N --json databaseId,headSha,conclusion,createdAt,updatedAt` and returns its output text ([gh-cli.md](gh-cli.md)).
@@ -1922,6 +2018,7 @@ def list_runs(repo: str, limit: int) -> str:
 This is the longest file. It runs the same jobs as `ci.yml`, each one a `make` target ([make.md](make.md)).
 
 
+<!-- fmt:off -->
 ```python
 """The whole pipeline on a laptop: the same jobs as .github/workflows/ci.yml, each one a `make` target.
 
@@ -1954,11 +2051,13 @@ REQUIRED = ("build", "lint", "unit", "integration")
 UNIT_PATHS = ("tests/unit", "tests/pipeline")
 LOCK_FILE = "requirements-dev.lock"
 ```
+<!-- fmt:on -->
 
 - **Lines 1 to 10** are the docstring. It describes the two ways to run the pipeline. The `sequential` way starts from a fresh environment and does everything in a row. The `parallel` way reuses the cached environment, builds once, then runs lint, unit tests and the integration test at the same time, with the quarantine job running beside them.
 - **Lines 14 to 26** are imports. `ThreadPoolExecutor` runs functions on several threads at once.
 - **Lines 28 to 30** are constants: the four required job names, the two test folders of the unit job, and the lock file's name.
 
+<!-- fmt:off -->
 ```python
 @dataclass(frozen=True, slots=True)
 class RunOptions:
@@ -1991,6 +2090,7 @@ def _read_digest(root: Path) -> tuple[Path, str]:
     name, digest = next(iter(sums.items()))
     return root / "dist" / name, digest
 ```
+<!-- fmt:on -->
 
 - **Lines 33 to 41**: `RunOptions` bundles the choices for one run: the `variant`, which jobs to keep (`only`, `None` meaning all), whether the quarantined test joins the unit job, and a `label` that replaces the variant's name in the log. Fields after the first have defaults.
 - **Lines 44 to 46**: `make_job(name, *arguments)` builds a job whose single step is `make --no-print-directory <arguments>`. The `*arguments` in the parameter list collects any number of extra positional words into a tuple; `*arguments` in the call spreads them back out. The flag keeps `make` from printing "Entering directory" lines.
@@ -1998,6 +2098,7 @@ def _read_digest(root: Path) -> tuple[Path, str]:
 - **Lines 54 to 56**: the integration job is `make test-artifact` with two variables: the wheel's path and its expected checksum.
 - **Lines 59 to 62**: `_read_digest` reads `dist/SHA256SUMS` and returns the wheel's path and checksum. `next(iter(sums.items()))` takes the first (here the only) pair of the dictionary; `name, digest = ...` unpacks it.
 
+<!-- fmt:off -->
 ```python
 def run_parallel(root: Path, options: RunOptions) -> list[Outcome]:
     """Build, then lint, unit and integration at the same time; the quarantine job runs beside them."""
@@ -2026,6 +2127,7 @@ def run_parallel(root: Path, options: RunOptions) -> list[Outcome]:
         outcomes = [future.result() for future in futures.values()]
     return outcomes
 ```
+<!-- fmt:on -->
 
 `run_parallel` is the heart of the "after" version of the pipeline.
 
@@ -2036,6 +2138,7 @@ def run_parallel(root: Path, options: RunOptions) -> list[Outcome]:
 - **Lines 79 to 88**: the integration job is a *function inside the function* so it can wait for the build. `futures["build"].result()` blocks until the build job has finished and returns its `Outcome`. If the build failed, integration is reported as failed without running (`Outcome("integration", False, 0.0, built.log)`). Otherwise it reads the checksum and runs the integration job. `pool.submit(integrate)` runs that function on a pool thread. The result: lint, unit tests and quarantine run during the build, and integration starts the moment the build ends.
 - **Line 89**: `[future.result() for future in futures.values()]` waits for every job and collects the outcomes.
 
+<!-- fmt:off -->
 ```python
 def sequential_job(root: Path) -> Job:
     """Everything in one job, from a cold environment, as the first version of the pipeline did."""
@@ -2064,6 +2167,7 @@ def sequential_job(root: Path) -> Job:
         ),
     )
 ```
+<!-- fmt:on -->
 
 `sequential_job` is the "before" version: one job of ten steps, run in order.
 
@@ -2072,6 +2176,7 @@ def sequential_job(root: Path) -> Job:
 - **Lines 105 to 117**: the steps. (1) `python -m venv --clear DIR` makes a fresh virtual environment, deleting any old one: no cache, on purpose. (2) `pip install -q --no-cache-dir --require-hashes -r requirements-dev.lock` installs the locked tools and refuses any file whose hash is not in the lock ([pip-and-hash-locking.md](pip-and-hash-locking.md)). (3) `pip install --no-deps -e .` installs this project in editable mode. (4 to 7) ruff check, ruff format check, mypy and import-linter. (8) the unit tests with the quarantined test excluded and a JUnit report written. (9) the integration tests. (10) the build.
 - `Command((tool("mypy"),))` has a trailing comma because `(x)` is only `x` in parentheses, whereas `(x,)` is a one-item tuple.
 
+<!-- fmt:off -->
 ```python
 def run_pipeline(root: Path, options: RunOptions, runs_csv: Path) -> tuple[list[Outcome], runlog.RunRecord]:
     """Run one variant, append its row to the run log and return the job outcomes with that row."""
@@ -2096,6 +2201,7 @@ def run_pipeline(root: Path, options: RunOptions, runs_csv: Path) -> tuple[list[
     runlog.append(runs_csv, record)
     return outcomes, record
 ```
+<!-- fmt:on -->
 
 `run_pipeline` runs one variant and records it.
 
@@ -2103,6 +2209,7 @@ def run_pipeline(root: Path, options: RunOptions, runs_csv: Path) -> tuple[list[
 - **Lines 125 to 128**: pick the variant. **Line 130**: `all(...)` is true only if every required job (or the sequential job) succeeded; the quarantine job is deliberately not counted.
 - **Lines 131 to 140**: read the failures out of the test reports, and build one `RunRecord`: the next run number, the first 7 characters of the commit (`[:7]`), the elapsed seconds, success or failure, the variant, the ids of failed tests and the first failure's message. **Line 141** appends it to the log.
 
+<!-- fmt:off -->
 ```python
 def hunt(root: Path, runs: int, runs_csv: Path) -> list[runlog.RunRecord]:
     """Run the domain tests, quarantined test included, `runs` times on the same commit, logging every run.
@@ -2134,6 +2241,7 @@ def _failures(root: Path) -> list[FailedTest]:
     reports = [root / "reports" / "unit.xml", root / "reports" / "integration.xml"]
     return [failure for report in reports if report.exists() for failure in parse_junit_failures(report.read_text())]
 ```
+<!-- fmt:on -->
 
 - `hunt` repeats `make test-domain UNIT_MARKERS=` (the domain tests with the flaky test included) `runs` times on the same commit and logs each as a `flake-hunt` row. The pass/fail pattern of those rows is the evidence that the test is flaky.
 - `_failures` (lines 170 to 173) reads the unit and integration reports if they exist. A comprehension with two `for` parts and an `if`: for each existing report file, for each failure in it, keep the failure. This makes the log say *which test* failed.

@@ -49,6 +49,7 @@ The header comment says the file is copied to `.env` by `make up`. The target is
 
 ### `Settings.from_env` in `settings.py`
 
+<!-- fmt:off -->
 ```python
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -82,6 +83,7 @@ The header comment says the file is copied to `.env` by `make up`. The target is
             f"@{self.postgres_host}:{self.postgres_port}/{quote(self.postgres_db, safe='')}"
         )
 ```
+<!-- fmt:on -->
 
 - `env = os.environ if environ is None else environ`: use the real environment unless a dictionary is passed in (tests pass one).
 - `host = _text(env, "POSTGRES_HOST", "localhost")` reads the variable, strips spaces, and raises `ConfigurationError("POSTGRES_HOST must be set and not empty")` if it is empty; the third argument is the default.

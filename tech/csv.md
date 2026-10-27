@@ -35,6 +35,7 @@ run,commit,seconds,result,variant,failed_tests,message
 
 `run` is the run number, `commit` the first 7 characters of the commit, `seconds` how long the run took, `result` is `success` or `failure`, `variant` names the kind of run (`sequential`, `parallel`, `flake-hunt`), `failed_tests` the ids of failed tests joined with `;`, and `message` the first line of the first failure. In `runlog.py`:
 
+<!-- fmt:off -->
 ```python
 SUCCESS = "success"
 FAILURE = "failure"
@@ -52,11 +53,13 @@ class RunRecord:
     failed_tests: tuple[str, ...] = ()
     message: str = ""
 ```
+<!-- fmt:on -->
 
 `HEADER` is the tuple of the seven names; `RunRecord` is the matching frozen dataclass ([python.md](python.md)).
 
 ### Writing a row
 
+<!-- fmt:off -->
 ```python
 def append(path: Path, record: RunRecord) -> None:
     """Append one row, writing the header first when the file is new."""
@@ -77,6 +80,7 @@ def append(path: Path, record: RunRecord) -> None:
             ]
         )
 ```
+<!-- fmt:on -->
 
 - **Line 60**: `is_new = not path.exists() or path.stat().st_size == 0` is true if the file is missing or empty; then **lines 63 and 64** write the header first.
 - **Line 61**: `with path.open("a", newline="") as handle:` opens for appending. **Line 62**: `csv.writer(handle)`.
@@ -84,6 +88,7 @@ def append(path: Path, record: RunRecord) -> None:
 
 ### Reading the log
 
+<!-- fmt:off -->
 ```python
 def read(path: Path) -> list[RunRecord]:
     """Read a run log; a missing file is an empty log."""
@@ -102,11 +107,13 @@ def read(path: Path) -> list[RunRecord]:
             )
             for row in csv.DictReader(handle)
 ```
+<!-- fmt:on -->
 
 `read` returns an empty list for a missing file. `csv.DictReader` gives each row as a dictionary. The values are converted: `int(row["run"])`, `float(row["seconds"])`. `row.get("variant", "")` tolerates a missing column. `tuple(filter(None, row.get("failed_tests", "").split(";")))` splits the failed-tests cell at semicolons and removes empty pieces, so an empty cell becomes an empty tuple.
 
 ### Summarising it
 
+<!-- fmt:off -->
 ```python
 
 def next_run_number(records: Sequence[RunRecord]) -> int:
@@ -143,6 +150,7 @@ def format_comparison(before: Summary | None, after: Summary | None) -> str:
         lines.append(f"median under half of the starting time: {verdict}")
     return "\n".join(lines)
 ```
+<!-- fmt:on -->
 
 - `next_run_number`: highest number plus one (`max(..., default=0)`).
 - `summarize`: the durations of one variant, then the count, the **median** and the slowest. The median is the middle value after sorting; one very slow run barely moves it, which is why it is used instead of the average.

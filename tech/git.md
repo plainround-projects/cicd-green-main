@@ -45,6 +45,7 @@ The pipeline's inputs come from Git. "Which files changed in this pull request" 
 
 ### `pipeline/adapters/git.py`
 
+<!-- fmt:off -->
 ```python
 """The few git facts the pipeline needs."""
 
@@ -74,6 +75,7 @@ def changed_paths(repo: Path, base: str, head: str) -> list[str]:
     """Files changed between two commits (three-dot: since `head` branched from `base`)."""
     return run_output(["git", "diff", "--name-only", f"{base}...{head}"], repo).split()
 ```
+<!-- fmt:on -->
 
 - **Line 3** (`from __future__ import annotations`), **line 5** (`Path`) and **line 7** (`run_output`, which runs a command and returns what it printed) are explained in [python.md](python.md).
 - **Lines 10 to 12**, `head_sha`: `git rev-parse HEAD` prints the full SHA of the current commit. `rev-parse` turns a name into a SHA. `.strip()` removes the newline at the end.
@@ -87,6 +89,7 @@ The full line-by-line walkthrough is in [bash-and-sh.md](bash-and-sh.md). The th
 
 ### `pipeline/adapters/gate.py`: running the checks on one commit
 
+<!-- fmt:off -->
 ```python
 """A local stand-in for "required status checks": CI posts a green status for a commit, and the remote refuses `main`
 without it. See pipeline/hooks/pre-receive and scripts/gate-demo.sh."""
@@ -116,6 +119,7 @@ def post_green_status(repo: Path, remote: str, sha: str, token: str) -> None:
     """Push `refs/status/green/<sha>` to `remote`. The remote accepts it only with the CI token as a push option."""
     run_output(["git", "push", "--push-option", f"ci-token={token}", remote, f"{sha}:refs/status/green/{sha}"], repo)
 ```
+<!-- fmt:on -->
 
 - **Line 18**: `git worktree add --detach TREE SHA` makes a **worktree**: a second working folder, connected to the same repository, with the files of one commit checked out. `--detach` means "check out the commit itself without making a branch". The checks run there, so the developer's own working files are never touched.
 - **Lines 19 to 22**: `try: return subprocess.run(...)` runs the checks inside the worktree and returns whether they exited with 0. `finally:` runs whether or not an error happened: `git worktree remove --force TREE` deletes the temporary worktree. (The temporary folder from `tempfile` disappears at the end of the `with` block.)

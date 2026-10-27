@@ -207,6 +207,7 @@ Explained contract by contract in [import-linter.md](import-linter.md).
 
 ### How the pipeline reads this file
 
+<!-- fmt:off -->
 ```python
 def base_version(pyproject_text: str) -> str:
     """The `project.version` of a pyproject.toml, which must be MAJOR.MINOR.PATCH."""
@@ -215,9 +216,11 @@ def base_version(pyproject_text: str) -> str:
         raise VersionError(f"project.version must be MAJOR.MINOR.PATCH, got {version!r}")
     return str(version)
 ```
+<!-- fmt:on -->
 
 `tomllib.loads(pyproject_text)["project"]["version"]` reaches into the `project` table and takes `version`. Opening the file for `tomllib.load` instead of `loads` requires binary mode (`"rb"`), because the module decodes the UTF-8 itself. The function then checks that the value looks like `MAJOR.MINOR.PATCH`.
 
+<!-- fmt:off -->
 ```python
 def stamp_pyproject(pyproject_text: str, version: str) -> str:
     """Replace the first `version = "..."` line (the one in `[project]`) with `version`."""
@@ -226,6 +229,7 @@ def stamp_pyproject(pyproject_text: str, version: str) -> str:
         raise VersionError("pyproject.toml has no version line to stamp")
     return stamped
 ```
+<!-- fmt:on -->
 
 `stamp_pyproject` rewrites only the first `version = "..."` line, with a regular expression, in a *copy* of the file, so that a comment or the order of keys is never disturbed.
 

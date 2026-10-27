@@ -66,6 +66,7 @@ where = ["src"]
 
 ### Version rules: `pipeline/core/version.py`
 
+<!-- fmt:off -->
 ```python
 def build_version(base: str, commit_sha: str, dirty: bool = False) -> str:
     """`base+<first 7 characters of the commit>`, with `.dirty` when the working tree has uncommitted changes."""
@@ -83,12 +84,14 @@ def stamp_pyproject(pyproject_text: str, version: str) -> str:
         raise VersionError("pyproject.toml has no version line to stamp")
     return stamped
 ```
+<!-- fmt:on -->
 
 - `build_version(base, commit_sha, dirty)` first checks both inputs against patterns (`_SEMVER`: three dot-separated numbers; `_SHA`: 7 to 40 characters from `0-9a-f`). Then it returns `base + "+" + the first 7 characters of the commit` and `.dirty` if the working tree had uncommitted changes. Same commit and cleanliness: same version.
 - `stamp_pyproject(text, version)` replaces the first `version = "..."` line with the new version, in the text it is given.
 
 ### Building: `pipeline/adapters/builder.py`
 
+<!-- fmt:off -->
 ```python
 def build_wheel(root: Path, dist: Path, python: str = sys.executable) -> BuiltArtifact:
     """Stamp the version into a copy of the sources, build the wheel in a temporary folder and write `dist/SHA256SUMS`.
@@ -119,6 +122,7 @@ def build_wheel(root: Path, dist: Path, python: str = sys.executable) -> BuiltAr
     (dist / SUMS_FILE).write_text(sums_line(target, digest) + "\n")
     return BuiltArtifact(target, version, digest)
 ```
+<!-- fmt:on -->
 
 - **Lines 33 and 34**: ask Git for the current commit and whether the tree is dirty, and compute the version.
 - **Line 35**: a temporary folder that is deleted when the block ends. **Lines 36 to 40**: copy `src/` (without caches) into it, plus `README.md` and `LICENSE`, and write a copy of `pyproject.toml` with the version stamped. **The repository's own files are never modified.** That is why you can build on a clean checkout and get exactly `0.1.0+<commit>`.
@@ -128,6 +132,7 @@ def build_wheel(root: Path, dist: Path, python: str = sys.executable) -> BuiltAr
 
 ### Checksums: `pipeline/core/checksum.py`
 
+<!-- fmt:off -->
 ```python
 def sha256_of(path: Path) -> str:
     """Hex SHA-256 of a file, read in chunks."""
@@ -160,6 +165,7 @@ def verify(path: Path, expected: str) -> str:
         raise ChecksumMismatchError(f"{path.name}: expected sha256 {expected}, found {actual}")
     return actual
 ```
+<!-- fmt:on -->
 
 - `sha256_of(path)` reads the file in one-mebibyte pieces and feeds a running hash, so a huge file never sits in memory (`while chunk := handle.read(_CHUNK)` assigns and tests in one step).
 - `sums_line` and `parse_sums` write and read the `SHA256SUMS` format.

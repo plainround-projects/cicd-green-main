@@ -29,6 +29,7 @@ Nothing in the pipeline renders Markdown. It is plain text, so the contract chec
 
 ### The contract check (`pipeline/core/contract.py`)
 
+<!-- fmt:off -->
 ```python
 """Check the README's pipeline contract: short, concrete, and it says what to do when `main` is red."""
 
@@ -72,6 +73,7 @@ def check(readme: str) -> list[str]:
         problems.append("it must give the time the required checks should take, in minutes")
     return problems
 ```
+<!-- fmt:on -->
 
 - **Line 7**: `_HEADING = re.compile(r"^## ")` matches a line that starts with `## `, a level-two heading.
 - **Lines 8 and 9**: `CONTRACT_HEADING = "## The pipeline's contract"` and `MAX_LINES = 10`.

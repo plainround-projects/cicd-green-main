@@ -35,6 +35,7 @@ It is the service's only runtime dependency. The class `PostgresJobStore` uses i
 
 ### `src/small_service/infrastructure/postgres_store.py`
 
+<!-- fmt:off -->
 ```python
 """The `JobStore` port on PostgreSQL (sql/001_schema.sql creates the table)."""
 
@@ -63,12 +64,14 @@ class PostgresJobStore:
             retriable=(psycopg.OperationalError,),
         )
 ```
+<!-- fmt:on -->
 
 - **Line 1** is the docstring. **Line 3** is the `from __future__` line ([python.md](python.md)). **Line 5**: `Any` from `typing` is the type hint for "anything". **Line 7**: `import psycopg`. **Lines 9 and 10** import our own `JobRecord` and the `retry` helper ([python.md](python.md) explains both).
 - **Line 12**: `_CONNECT_TIMEOUT_SECONDS = 5` is the longest to wait for the server to answer a connection attempt.
 - **Lines 15 to 20**: the class stores the connection string in `self._dsn`. "DSN" means *data source name*: the text `postgresql://user:password@host:port/db` built by `Settings.dsn` ([dotenv.md](dotenv.md)).
 - **Lines 22 to 26**: `_connect` returns a connection. Its type, `psycopg.Connection[tuple[Any, ...]]`, says that result rows come back as tuples of anything. The body is `retry(lambda: psycopg.connect(self._dsn, connect_timeout=_CONNECT_TIMEOUT_SECONDS), retriable=(psycopg.OperationalError,))`: try to connect; if psycopg reports an `OperationalError` (the server is not reachable yet), wait and try again, up to four times; any other error is raised immediately. `lambda: ...` is a nameless function with no parameters, which is what `retry` expects for "the thing to try". `(psycopg.OperationalError,)` is a one-item tuple; the trailing comma is what makes it a tuple.
 
+<!-- fmt:off -->
 ```python
     def save(self, record: JobRecord) -> None:
         """Insert one row; the transaction commits when the connection block ends."""
@@ -93,6 +96,7 @@ class PostgresJobStore:
         with self._connect() as connection:
             connection.execute("SELECT 1")
 ```
+<!-- fmt:on -->
 
 - **Lines 28 to 34**, `save`: `with self._connect() as connection:` opens the connection and makes sure it is committed and closed when the block ends (rolled back if an error leaves the block). `connection.execute("INSERT ... VALUES (%s, %s, %s, %s)", (record.job_key, record.recorded_at, record.duration_ms, record.finished))` sends one statement and four values. The `datetime` carries a time zone, so PostgreSQL stores an exact moment.
 - **Lines 36 to 44**, `recent`: `connection.execute("SELECT ... ORDER BY recorded_at DESC, id DESC LIMIT %s", (limit,)).fetchall()`. `.fetchall()` returns all the result rows as a list of tuples. The `with` block ends before the list is turned into records, because the rows are already in memory. The last line, `[JobRecord(key, recorded_at, duration, finished) for key, recorded_at, duration, finished in rows]`, is a list comprehension that unpacks each tuple into four names and builds a `JobRecord`.

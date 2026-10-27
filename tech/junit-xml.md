@@ -30,6 +30,7 @@ An XML parser reads the characters, checks that the tags are properly nested, an
 
 A shortened sample, as used in the tests:
 
+<!-- fmt:off -->
 ```python
 JUNIT = """<testsuites><testsuite>
 <testcase classname="tests.unit.domain.test_jobs_timing" name="test_job_finishes_in_time">
@@ -38,9 +39,11 @@ JUNIT = """<testsuites><testsuite>
 <testcase classname="tests.unit.x" name="test_broken"><error message="ImportError: nope"/></testcase>
 </testsuite></testsuites>"""
 ```
+<!-- fmt:on -->
 
 Three test cases: the first has a `<failure>` with a multi-line message, the second passed (no child), the third has an `<error>`.
 
+<!-- fmt:off -->
 ```python
 def parse_junit_failures(xml_text: str) -> list[FailedTest]:
     """Failed or errored test cases of a JUnit XML report (pytest's `--junitxml`)."""
@@ -54,6 +57,7 @@ def parse_junit_failures(xml_text: str) -> list[FailedTest]:
             failures.append(FailedTest(test_id, first_line))
     return failures
 ```
+<!-- fmt:on -->
 
 - **Line 57**: `root = ET.fromstring(xml_text)` parses the report. The `# noqa: S314` comment silences a security warning about parsing XML from strangers; it is justified because this file was written by our own test run.
 - **Line 58**: `failures = []` collects the results. **Line 59**: `for case in root.iter("testcase"):` visits every test case.
@@ -65,12 +69,14 @@ def parse_junit_failures(xml_text: str) -> list[FailedTest]:
 
 ### Where the reports are read
 
+<!-- fmt:off -->
 ```python
 def _failures(root: Path) -> list[FailedTest]:
     """Failed tests of the unit and integration reports, so a failed run says where it failed."""
     reports = [root / "reports" / "unit.xml", root / "reports" / "integration.xml"]
     return [failure for report in reports if report.exists() for failure in parse_junit_failures(report.read_text())]
 ```
+<!-- fmt:on -->
 
 `_failures` looks for `reports/unit.xml` and `reports/integration.xml`; for each that exists it parses it and flattens the results into one list. `run_pipeline` and `hunt` store the test ids (joined with `;`) and the first message in the `failed_tests` and `message` columns of the run log. Then `flaky_commits` and `flake_reports` count them ([python.md](python.md)).
 

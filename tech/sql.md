@@ -80,6 +80,7 @@ FROM job_runs WHERE finished GROUP BY job_key ORDER BY job_key;
 
 ### SQL written inside Python: `postgres_store.py`
 
+<!-- fmt:off -->
 ```python
     def save(self, record: JobRecord) -> None:
         """Insert one row; the transaction commits when the connection block ends."""
@@ -104,6 +105,7 @@ FROM job_runs WHERE finished GROUP BY job_key ORDER BY job_key;
         with self._connect() as connection:
             connection.execute("SELECT 1")
 ```
+<!-- fmt:on -->
 
 - **Lines 31 to 34**: `INSERT INTO job_runs (job_key, recorded_at, duration_ms, finished) VALUES (%s, %s, %s, %s)` followed by a tuple of four values. The four `%s` are the placeholders; psycopg sends the statement and the values separately ([psycopg.md](psycopg.md)).
 - **Lines 39 to 43**: the `SELECT` is the first query above with a placeholder for the limit: `... ORDER BY recorded_at DESC, id DESC LIMIT %s` and `(limit,)` as the values. The two string pieces on adjacent lines are joined by Python into one statement. `(limit,)` has a comma because that is what makes a one-item tuple in Python.

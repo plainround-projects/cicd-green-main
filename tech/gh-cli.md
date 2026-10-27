@@ -26,6 +26,7 @@ Two things the lesson needs live in GitHub's settings, not in the repository: th
 
 ## Walkthrough of this repository's use
 
+<!-- fmt:off -->
 ```python
 def apply_branch_protection(repo: str, payload: dict[str, Any]) -> None:
     """`PUT /repos/{repo}/branches/main/protection` with `payload`."""
@@ -57,6 +58,7 @@ def list_runs(repo: str, limit: int) -> str:
     )
     return result.stdout
 ```
+<!-- fmt:on -->
 
 - **Lines 10 to 17**, `apply_branch_protection(repo, payload)`: runs `gh api -X PUT repos/<repo>/branches/main/protection --input -` through `subprocess.run`. `input=json.dumps(payload)` is the text fed to its standard input; `text=True` means it is text, not bytes; `check=True` raises an error if `gh` exits non-zero. The command is a Python *list*, so no shell is involved; the `# noqa: S603` and `# noqa: S607` comments silence two security warnings about starting programs, which are acceptable here for that reason ([ruff.md](ruff.md)).
 - **Lines 20 to 38**, `list_runs(repo, limit)`: runs `gh run list --repo REPO --limit N --json databaseId,headSha,conclusion,createdAt,updatedAt` and returns what it printed (`capture_output=True`, `text=True`). The five field names are exactly what `parse_gh_runs` reads ([json.md](json.md)).
