@@ -2,68 +2,82 @@
 
 ## What it is
 
-Docker Compose runs several containers together from one YAML file, `docker-compose.yml`. You describe **services** (one container each), their ports, environment variables, health checks and start order. `docker compose up` creates and starts them. This repository uses the `docker compose` command (version 2, built into Docker; this machine has v2.23.0).
+Starting one container by hand takes a long command (`docker run --name ... -e ... -p ... image`). Starting several, wired together, takes more. **Docker Compose** lets you write that down once in a file, `docker-compose.yml`, and then run the whole set with one command. The file is written in YAML ([yaml.md](yaml.md)). This repository uses the `docker compose` command that is built into Docker (version 2; v2.23.0 here).
+
+Compose words:
+
+- A **service** is one container definition (an image, its settings), such as `db`.
+- A **project** is the group of services started together. Compose names everything with the project name (by default, the folder name).
+- A **network**: Compose puts a project's containers on a private network where they find each other by service name (the `app` container reaches the database at the host name `db`).
+- A **published port** (`ports:`) opens a door from your computer into a container.
+- A **volume** or **tmpfs** is where a container stores files that should outlive it (volume) or live in memory only (tmpfs).
+- A **profile** hides a service unless you ask for it by name.
+- A **health check** is a command Docker runs inside a container to decide whether it is ready. `up --wait` waits for "healthy".
 
 ## Why this repository uses it
 
-The service stores its job history in PostgreSQL and the integration test needs a real database. Compose gives every learner the same database with one command and removes it with another, so nothing is installed on the machine. See [docker.md](docker.md) for what a container is.
+The service stores its job history in PostgreSQL, and the integration tests must run against a real database. Compose gives every learner the same database with one command, and removes it with another, so nothing is installed on the learner's machine. It also builds and runs the packaged application image for the local "deploy" step.
 
 ## Where it appears
 
 | Path | Use |
 |---|---|
-| `docker-compose.yml` | Two services: `db` (PostgreSQL) and `app` (the packaged service, only with the `app` profile). |
-| `Makefile` | `COMPOSE := docker compose`; targets `up`, `db`, `deploy-local`, `down` call it. |
-| `.env` / `.env.example` | Values Compose substitutes into the file ([dotenv.md](dotenv.md)). |
+| `docker-compose.yml` | Two services: `db` and `app`. |
+| `Makefile` | `COMPOSE := docker compose`; the targets `up`, `db`, `deploy-local`, `down` use it. |
+| `.env` and `.env.example` | The values Compose fills into the file ([dotenv.md](dotenv.md)). |
 
 ## How it works underneath
 
-- Compose reads the YAML, replaces `${VAR}` with values from your shell or the `.env` file, then talks to the Docker engine to create a private **network**, containers and volumes. The project name (the folder name) prefixes everything.
-- Services on the same network reach each other by **service name**. The `app` container connects to host `db`, not `localhost`.
-- A **published port** (`ports:`) opens a door from the host into the container: `127.0.0.1:55471:5432` means "host port 55471 on this machine only, forwarded to container port 5432".
-- A **health check** is a command Docker runs inside the container. `docker compose up --wait` waits until it passes.
-- A **profile** hides services unless you ask for them.
+Compose reads the YAML, replaces `${NAME}` placeholders with values from the shell environment or the `.env` file in the project folder, and asks the Docker engine to create the containers, the network and the volumes. `docker compose up -d --wait db` creates and starts `db` in the background and returns once its health check passes. `docker compose exec` runs a command in a running container. `docker compose down -v` stops and removes the containers and deletes their volumes.
+
+Compose has its own placeholder syntax: `${VAR}` (the value), `${VAR:-default}` (the value, or `default` if unset or empty) and `${VAR:?message}` (the value, or stop with `message` if unset). A `$$` writes a literal dollar sign that Compose leaves alone, so that the container's own shell can expand it.
 
 ## Walkthrough of this repository's use
 
 ```yaml
+# The local target: PostgreSQL for the integration tests and the packaged service (profile "app").
+# Host port and credentials come from .env (copied from .env.example by `make up`).
 services:
-  db:
-    image: postgres:16.4-alpine
 ```
-Start from the PostgreSQL 16.4 image on Alpine Linux (a very small Linux). A fixed tag means everyone gets the same database version.
+
+- **Lines 1 and 2** are comments: the file defines the local target, PostgreSQL for the integration tests plus the packaged service under the profile `app`; host port and credentials come from `.env`, copied from `.env.example` by `make up`.
+- **Line 3**: `services:` starts the list of services.
 
 ```yaml
+  db:
+    image: postgres:16.4-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-service}
       POSTGRES_USER: ${POSTGRES_USER:-service}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-```
-On first start the image creates this database and user. `${NAME:-default}` uses `default` when the variable is unset or empty. `${NAME:?message}` stops with the message when it is unset. So there is **no default password**: you must have a `.env` file.
-
-```yaml
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-55471}:5432"
 ```
-Only this machine can connect (`127.0.0.1`). The host port is unusual (55471) so it does not clash with a PostgreSQL you may already run on 5432.
+
+- **Line 4**: `db:` is the first service's name. **Line 5**: `image: postgres:16.4-alpine` says which image to run: the official PostgreSQL 16.4 server on Alpine, a very small Linux. A fixed tag means everyone gets the same database version.
+- **Lines 6 to 9**: `environment:` sets environment variables inside the container. The PostgreSQL image reads them on first start to create a database and a user. `POSTGRES_DB: ${POSTGRES_DB:-service}` uses the variable or the default `service`. **Line 9**, `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}`, has **no default**: if the variable is missing, Compose stops with that message. A database should never start with a guessable default password.
+- **Lines 10 and 11**: `ports: - "127.0.0.1:${POSTGRES_PORT:-55471}:5432"`. The format is `host-address:host-port:container-port`. PostgreSQL listens on 5432 inside the container. `127.0.0.1` is the loopback address, "this computer only", so other machines cannot connect. The host port is 55471 by default, chosen to avoid clashing with a PostgreSQL you may already run on 5432.
 
 ```yaml
+    # -h 127.0.0.1: the image first starts a temporary server that listens on the socket only; TCP answers when the real one is up
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 20s
       retries: 30
       start_period: 10s
-```
-`pg_isready` asks the server if it accepts connections. `-h 127.0.0.1` forces a TCP connection. The PostgreSQL image first starts a temporary server that listens only on a Unix socket while it runs setup, and a check over the socket would say "ready" too early. `$$` writes a literal `$`, so the **container's** shell expands `POSTGRES_USER`, not Compose. `interval` is the time between checks, `timeout` is how long one check may take (20 s because a busy laptop is slow), `retries` is how many failures count as unhealthy, and `start_period` is a grace time when failures do not count.
-
-```yaml
     tmpfs:
       - /var/lib/postgresql/data
 ```
-The data directory lives in memory. It is fast, and it vanishes with the container, so every run starts clean.
+
+- **Line 12** (a comment) explains the health check: at first the image starts a temporary server that listens on a Unix socket only, to run set-up, and only then the real server that listens on TCP. A check over the socket would report "ready" too early, so the check forces TCP with `-h 127.0.0.1`.
+- **Lines 13 to 18**: `healthcheck:` with `test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]`. `CMD-SHELL` runs the string through the container's shell. `pg_isready` is a PostgreSQL tool that asks the server whether it accepts connections. `$$` makes the *container's* shell expand the variables, not Compose. `interval: 5s` is the time between checks; `timeout: 20s` is how long one check may take (generous, because a busy laptop is slow); `retries: 30` is how many failures count as unhealthy; `start_period: 10s` is a grace period at the start during which failures are not counted.
+- **Lines 19 to 21**: `tmpfs: - /var/lib/postgresql/data` keeps the database's data directory in memory. It is fast and disappears with the container, so every run starts empty.
 
 ```yaml
+
+  # The artifact the pipeline built, installed into an image and run against the database above:
+  #   make deploy-local
   app:
     profiles: ["app"]
     image: cicd-green-main:local
@@ -76,13 +90,22 @@ The data directory lives in memory. It is fast, and it vanishes with the contain
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-service}
+      POSTGRES_USER: ${POSTGRES_USER:-service}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     command: ["small-service", "smoke"]
 ```
-`profiles: ["app"]` means `docker compose up` ignores this service; only `--profile app` starts it (`make deploy-local`). `build` says how to make the image from the [Dockerfile](docker.md). `depends_on` with `service_healthy` starts `app` only after `db` passes its health check. Inside the network the database is at `db:5432`. `command` replaces the Dockerfile's `CMD`.
+
+- **Lines 22 and 23** (comments): the artifact the pipeline built, installed into an image and run against the database; started with `make deploy-local`.
+- **Line 24**: `app:` is the second service. **Line 25**: `profiles: ["app"]` hides it from a plain `docker compose up`; it starts only with `--profile app`.
+- **Line 26**: `image: cicd-green-main:local` is the name given to the image once built. **Lines 27 to 29**: `build:` tells Compose to build it from `context: .` (the current folder) using `dockerfile: Dockerfile` ([docker.md](docker.md)).
+- **Lines 30 to 32**: `depends_on: db: condition: service_healthy` makes Compose start `app` only after `db` passes its health check, not merely after the container starts.
+- **Lines 33 to 38**: the environment for the app. `POSTGRES_HOST: db` is the database's host name on the Compose network. `POSTGRES_PORT: "5432"` is the port *inside* the network, not the published one. The value is quoted so YAML keeps it as text.
+- **Line 39**: `command: ["small-service", "smoke"]` replaces the image's default `CMD`. `small-service smoke` runs a job twice, reads it back and prints a one-line result.
 
 ### How the Makefile drives it
 
-`make up` runs `docker compose up -d --wait db` (`-d` is "in the background"). `make down` runs `docker compose --profile app down -v`: stops and removes the containers and `-v` also deletes volumes.
+`make up` runs `docker compose up -d --wait db`. `make db` runs SQL through `docker compose exec -T db psql ...` ([make.md](make.md)). `make deploy-local` runs `docker compose --profile app build app` then `docker compose --profile app run --rm app` (`run --rm` starts a one-off container and deletes it afterwards). `make down` runs `docker compose --profile app down -v`.
 
 ## Try it yourself
 

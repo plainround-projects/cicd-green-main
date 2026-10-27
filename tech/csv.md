@@ -2,56 +2,156 @@
 
 ## What it is
 
-CSV ("comma-separated values") is a plain text table: one row per line, columns separated by commas, the first line naming the columns. Spreadsheets and Python's `csv` module read it. Text containing a comma or a quote is wrapped in quotes.
+**CSV** stands for "comma-separated values". It is the simplest way to store a table in a text file: one row per line, the cells of a row separated by commas, and the first line holding the column names. A spreadsheet program opens it as a table; so does Python's `csv` module. If a cell contains a comma or a quote, it is wrapped in double quotes (and quotes inside are doubled). Everything in a CSV file is text: a program that wants a number must convert it.
 
 ## Why this repository uses it
 
-The lesson asks for numbers: how long a run takes, and whether the same commit sometimes passes and sometimes fails. Those need a **log of runs**. A CSV file is the simplest log that a person can open in a spreadsheet and a program can read.
+The lesson asks for evidence: how long a run takes before and after the speed-ups, and whether the same commit sometimes passes and sometimes fails. That needs a **log of runs**, one row for each. A CSV file is the simplest log that both a person (in a spreadsheet) and a program can read, and it can be committed as evidence.
 
 ## Where it appears
 
 | Path | Use |
 |---|---|
-| `runs.csv` (git-ignored) | One row per local pipeline run. |
-| `docs/measurements/bench.csv`, `flake-hunt.csv` | The measured results kept in the repository as evidence. |
+| `runs.csv` (ignored by Git) | The local log; each pipeline run appends one row. |
+| `docs/measurements/bench.csv`, `docs/measurements/flake-hunt.csv` | Measured results kept in the repository as evidence. |
 | `pipeline/core/runlog.py` | `read`, `append`, `summarize`, `format_comparison`. |
 | `pipeline/core/flaky.py` | Turns rows into failure rates. |
+| `pipeline/core/ghruns.py` | Turns GitHub's run history into rows. |
 
 ## How it works underneath
 
-`csv.writer` joins values with commas and quotes where needed. `csv.DictReader` reads the header line and gives each row as a dictionary. Everything read is text, so numbers must be converted. Opening the file with `newline=""` stops Python from altering line endings that the csv module handles itself.
+`csv.writer(handle).writerow([...])` writes one row, quoting where needed. `csv.DictReader(handle)` reads the first line as the header and returns each following row as a dictionary keyed by the column names. Files are opened with `newline=""` so that Python does not change line endings the csv module is already managing. Opening in mode `"a"` appends; mode `"w"` replaces.
 
 ## Walkthrough of this repository's use
 
-```python
-HEADER = ("run", "commit", "seconds", "result", "variant", "failed_tests", "message")
+### The columns
+
 ```
-Seven columns. `variant` is `sequential`, `parallel` or `flake-hunt`. `failed_tests` joins several test ids with `;` so they fit in one cell.
+run,commit,seconds,result,variant,failed_tests,message
+1,af1d6c5,415.9,success,sequential,,
+2,af1d6c5,345.9,success,sequential,,
+3,af1d6c5,376.8,success,sequential,,
+```
+
+`run` is the run number, `commit` the first 7 characters of the commit, `seconds` how long the run took, `result` is `success` or `failure`, `variant` names the kind of run (`sequential`, `parallel`, `flake-hunt`), `failed_tests` the ids of failed tests joined with `;`, and `message` the first line of the first failure. In `runlog.py`:
+
+```python
+SUCCESS = "success"
+FAILURE = "failure"
+
+
+@dataclass(frozen=True, slots=True)
+class RunRecord:
+    """One pipeline run. `failed_tests` are test ids joined by `;`; `message` is the first failure's first line."""
+
+    run: int
+    commit: str
+    seconds: float
+    result: str
+    variant: str
+    failed_tests: tuple[str, ...] = ()
+    message: str = ""
+```
+
+`HEADER` is the tuple of the seven names; `RunRecord` is the matching frozen dataclass ([python.md](python.md)).
+
+### Writing a row
 
 ```python
 def append(path: Path, record: RunRecord) -> None:
+    """Append one row, writing the header first when the file is new."""
     is_new = not path.exists() or path.stat().st_size == 0
     with path.open("a", newline="") as handle:
         writer = csv.writer(handle)
         if is_new:
             writer.writerow(HEADER)
-        writer.writerow([record.run, record.commit, f"{record.seconds:.1f}", record.result, record.variant,
-                         ";".join(record.failed_tests), record.message.replace("\n", " ")[:160]])
+        writer.writerow(
+            [
+                record.run,
+                record.commit,
+                f"{record.seconds:.1f}",
+                record.result,
+                record.variant,
+                ";".join(record.failed_tests),
+                record.message.replace("\n", " ")[:160],
+            ]
+        )
 ```
-Open in append mode (`"a"`). Write the header only if the file is new or empty. Seconds are rounded to one decimal. The message has line breaks removed and is cut to 160 characters.
+
+- **Line 60**: `is_new = not path.exists() or path.stat().st_size == 0` is true if the file is missing or empty; then **lines 63 and 64** write the header first.
+- **Line 61**: `with path.open("a", newline="") as handle:` opens for appending. **Line 62**: `csv.writer(handle)`.
+- **Lines 65 to 75** write the row: run number, commit, the seconds formatted with one decimal (`f"{record.seconds:.1f}"`), result, variant, the failed test ids joined by `;`, and the message with newlines replaced by spaces and cut to 160 characters (`[:160]`).
+
+### Reading the log
 
 ```python
-with path.open(newline="") as handle:
-    return [RunRecord(run=int(row["run"]), ..., seconds=float(row["seconds"]), ...,
-                      failed_tests=tuple(filter(None, row.get("failed_tests", "").split(";")))) for row in csv.DictReader(handle)]
+def read(path: Path) -> list[RunRecord]:
+    """Read a run log; a missing file is an empty log."""
+    if not path.exists():
+        return []
+    with path.open(newline="") as handle:
+        return [
+            RunRecord(
+                run=int(row["run"]),
+                commit=row["commit"],
+                seconds=float(row["seconds"]),
+                result=row["result"],
+                variant=row.get("variant", ""),
+                failed_tests=tuple(filter(None, row.get("failed_tests", "").split(";"))),
+                message=row.get("message", ""),
+            )
+            for row in csv.DictReader(handle)
 ```
-`DictReader` gives each row as a dict. `int(...)` and `float(...)` convert the text. `.split(";")` then `filter(None, ...)` drops empty pieces, so an empty cell becomes an empty tuple. A missing file reads as an empty log.
+
+`read` returns an empty list for a missing file. `csv.DictReader` gives each row as a dictionary. The values are converted: `int(row["run"])`, `float(row["seconds"])`. `row.get("variant", "")` tolerates a missing column. `tuple(filter(None, row.get("failed_tests", "").split(";")))` splits the failed-tests cell at semicolons and removes empty pieces, so an empty cell becomes an empty tuple.
+
+### Summarising it
 
 ```python
-seconds = [record.seconds for record in records if record.variant == variant]
-return Summary(variant, len(seconds), statistics.median(seconds), max(seconds))
+
+def next_run_number(records: Sequence[RunRecord]) -> int:
+    """The number for the next row: one more than the highest so far."""
+    return max((record.run for record in records), default=0) + 1
+
+
+def summarize(records: Iterable[RunRecord], variant: str) -> Summary | None:
+    """Median and slowest duration of the runs of one variant; None when there are none."""
+    seconds = [record.seconds for record in records if record.variant == variant]
+    if not seconds:
+        return None
+    return Summary(variant, len(seconds), statistics.median(seconds), max(seconds))
+
+
+def format_duration(seconds: float) -> str:
+    """`1m 05s` for 65 seconds, `42s` under a minute."""
+    whole = round(seconds)
+    minutes, rest = divmod(whole, 60)
+    return f"{minutes}m {rest:02d}s" if minutes else f"{rest}s"
+
+
+def format_comparison(before: Summary | None, after: Summary | None) -> str:
+    """The before-and-after table of step 3, and whether the median is under half the starting time."""
+    lines = [f"{'version':<24}{'runs':<7}{'median':<10}slowest"]
+    for label, summary in (("1. sequential", before), ("3. cached and parallel", after)):
+        if summary is not None:
+            lines.append(
+                f"{label:<24}{summary.runs:<7}{format_duration(summary.median_seconds):<10}"
+                f"{format_duration(summary.slowest_seconds)}"
+            )
+    if before is not None and after is not None:
+        verdict = "yes" if after.median_seconds < before.median_seconds / 2 else "no"
+        lines.append(f"median under half of the starting time: {verdict}")
+    return "\n".join(lines)
 ```
-The **median** is the middle value after sorting, which a single slow run barely moves. `format_comparison` prints the before and after table and answers: is the new median under half of the old?
+
+- `next_run_number`: highest number plus one (`max(..., default=0)`).
+- `summarize`: the durations of one variant, then the count, the **median** and the slowest. The median is the middle value after sorting; one very slow run barely moves it, which is why it is used instead of the average.
+- `format_duration`: `divmod(whole, 60)` gives minutes and seconds; `f"{rest:02d}"` pads seconds to two digits.
+- `format_comparison`: prints the before-and-after table and whether the new median is under half of the old.
+
+### The evidence files
+
+`docs/measurements/bench.csv` holds the five sequential and five parallel runs; its medians are 6 minutes 41 seconds against 1 minute 55 seconds. `flake-hunt.csv` holds the 40 repeated runs of the domain tests used to find the flaky test; its 3 rows where `result` is `failure`, with `failed_tests` naming `test_job_finishes_in_time`, are the evidence (3 of 40 runs, on one commit).
 
 ## Try it yourself
 

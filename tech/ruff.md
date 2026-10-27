@@ -2,25 +2,29 @@
 
 ## What it is
 
-ruff is a very fast tool, written in Rust, that does two jobs for Python: a **linter** (finds likely bugs and style problems) and a **formatter** (rewrites code to one consistent layout). Pinned: 0.17.2. A **lint rule** has a code like `E501` (line too long) or `S603` (a subprocess call that deserves a look). You turn groups of rules on by their letter prefix.
+Code can be correct and still be hard to read, inconsistent, or full of small mistakes: an unused variable, a name that is used before it exists, a risky call. A **linter** is a program that reads your source files *without running them* and points these out. A **formatter** is a program that rewrites your files into one fixed layout (spaces, line breaks, quote style) so people never argue about it.
+
+**ruff** is both, for Python. It is written in Rust, which makes it very fast. This repository pins ruff 0.17.2. A **lint rule** has a code like `E501` ("line too long") or `S603` ("a program is started from variable input"). Rules are grouped by the letters at the start of their codes, and you switch groups on by those letters.
 
 ## Why this repository uses it
 
-A pipeline's `lint` job should be cheap and strict, and it should fail on the same things everywhere. `make lint` runs `ruff check` and `ruff format --check` first. Rules with a `S` prefix come from the "bandit" security checks and catch things like shell injection.
+A pipeline's `lint` job should be cheap and strict. `make lint` runs ruff first. The security group (the letter `S`, from a tool named "bandit") is included because the pipeline starts programs and opens files, which is where such mistakes happen.
 
 ## Where it appears
 
 | Path | Use |
 |---|---|
-| `pyproject.toml` `[tool.ruff]`, `[tool.ruff.lint]` | Line length 120, target version, selected rule groups. |
+| `pyproject.toml` `[tool.ruff]` and `[tool.ruff.lint]` | The settings. |
 | `Makefile` | `lint` runs `ruff check .` and `ruff format --check .`; `format` runs `ruff check --fix .` and `ruff format .`. |
-| Source files | A few lines end with `# noqa: S603 - reason` to allow one finding with a written reason. |
+| Several source files | Lines that end in `# noqa: CODE - reason`. |
 
 ## How it works underneath
 
-ruff reads every `.py` file, builds a syntax tree, and applies rules to the tree. It does not run your code. The formatter prints the tree back out in a fixed style. `--check` only reports if a file would change (exit status 1) and leaves it alone.
+ruff reads every `.py` file and turns it into a *syntax tree* (a structured picture of the program: functions, statements, calls). It applies each enabled rule to the tree and reports matches with file, line and code. It does not run your program. The formatter prints the same tree back in a fixed style. `ruff check --fix` applies the fixes it is sure about. `ruff format --check` reports unformatted files and exits with 1, changing nothing.
 
 ## Walkthrough of this repository's use
+
+### The settings in `pyproject.toml`
 
 ```toml
 [tool.ruff]
@@ -28,45 +32,51 @@ line-length = 120
 target-version = "py312"
 src = ["src", "pipeline", "tests"]
 extend-exclude = ["build"]
-```
-Lines may be 120 characters. `target-version` lets ruff suggest modern syntax (3.12). `src` tells the import sorter which folders are "our" code, so it groups imports correctly. `build` is skipped.
 
-```toml
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "N", "C4", "RUF", "PT", "S", "D100", "D101", "D103", "D104"]
 ```
 
-| Prefix | Meaning |
+- **Line 36**: `[tool.ruff]` starts the table of general settings ([toml.md](toml.md)).
+- **Line 37**: `line-length = 120`: the formatter wraps at 120 characters, and rule `E501` complains above that.
+- **Line 38**: `target-version = "py312"`: the oldest Python the code must run on, so ruff may suggest newer syntax (rule group `UP`).
+- **Line 39**: `src = ["src", "pipeline", "tests"]`: the folders that hold the project's own code, so the import sorter can tell *our* modules from third-party ones.
+- **Line 40**: `extend-exclude = ["build"]`: skip the `build` folder.
+- **Line 42**: `[tool.ruff.lint]` is the table for lint rules. **Line 43**: `select = [...]` lists which groups are on:
+
+| Prefix | What it checks |
 |---|---|
-| `E` | pycodestyle errors (line length, whitespace) |
+| `E` | style errors from pycodestyle (line length, whitespace) |
 | `F` | Pyflakes: unused imports and variables, undefined names |
-| `I` | isort: import order |
-| `B` | bugbear: likely bugs such as mutable default arguments |
-| `UP` | pyupgrade: use newer syntax |
-| `SIM` | simplifications |
-| `N` | naming conventions |
-| `C4` | comprehension tidy-ups |
+| `I` | isort: the order of `import` lines |
+| `B` | bugbear: constructs that are probably bugs (for example a mutable default argument) |
+| `UP` | pyupgrade: old syntax that has a newer form |
+| `SIM` | simplifications of needlessly complicated code |
+| `N` | naming conventions (classes in `CamelCase`, functions in `snake_case`) |
+| `C4` | clearer ways to write list, dictionary and set comprehensions |
 | `RUF` | ruff's own rules |
-| `PT` | pytest style |
-| `S` | security (bandit) |
-| `D100`, `D101`, `D103`, `D104` | missing docstring in a module, class, function, package |
+| `PT` | style of pytest tests |
+| `S` | security (from "bandit") |
+| `D100`, `D101`, `D103`, `D104` | a docstring is missing from a module, a class, a function, a package |
 
 ```toml
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D", "S"]
 ```
-Tests do not need docstrings, and `assert` (flagged by `S101`) is the whole point of a test.
 
-### Reasoned exceptions
+- **Lines 45 and 46**: `[tool.ruff.lint.per-file-ignores]` with `"tests/**" = ["D", "S"]`: in the tests folder, docstring rules (`D`) and security rules (`S`) are off. Tests use `assert`, which the security group flags, and need no docstrings.
 
-```python
-return random.uniform(MIN_JOB_SECONDS, MAX_JOB_SECONDS)  # noqa: S311 - simulated work time, not a secret
-```
-`S311` warns that `random` is not safe for secrets. Here it picks a delay, so the line says so. `# noqa: CODE - reason` silences only that code on that line, and the reason is part of the review. `process.py` uses `# noqa: S603 - argv is built by this program, never through a shell`.
+### The `Makefile` commands
 
-### Format check in CI
+- `ruff check .` (the dot means the whole project) prints each finding and exits non-zero if there is any. `ruff format --check .` fails if any file would be reformatted. `make format` runs `ruff check --fix .` then `ruff format .` ([make.md](make.md)).
 
-`ruff format --check .` exits 1 if any file is not formatted. That keeps style arguments out of review.
+### Reasoned exceptions in the code
+
+When a rule fires on code that is fine, the line ends with `# noqa: CODE - reason`: `noqa` means "no quality assurance" for this line, only for that code, and the text after the dash is the reason, so a reviewer can judge it. The ones in this repository:
+
+- `src/small_service/domain/jobs.py` line 29: `random.uniform(...)  # noqa: S311 - simulated work time, not a secret`. Rule `S311` warns that Python's `random` module is not safe for passwords or tokens. Here it only picks a pretend duration.
+- `pipeline/adapters/process.py` lines 50 and 72, `gate.py` line 20 and `github.py` lines 12, 22 and 23: `# noqa: S603` (and `S607` for a partial program path such as `gh`): rules about starting programs from variable input. The command is always a *list built by this program* and is never passed through a shell, so nothing a stranger types can become a command.
+- `pipeline/core/flaky.py` line 57: `# noqa: S314 - our own pytest report, not untrusted input`. `S314` warns that reading XML from an unknown source can be abused; this file was written by our own test run.
 
 ## Try it yourself
 

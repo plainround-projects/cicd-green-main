@@ -2,36 +2,45 @@
 
 ## What it is
 
-`uv` is a fast Python packaging tool written in Rust by Astral (the makers of [ruff](ruff.md)). It can create virtual environments, install packages and, the part used here, **resolve** a list of loose requirements into one exact, hashed lock file. Version used by the author: 0.11.2.
+`uv` is a fast tool for managing Python packages, written in Rust by Astral (the makers of ruff, [ruff.md](ruff.md)). It can create virtual environments, install packages and, the job it has here, **resolve** requirements into a lock file. Version used by the author: 0.11.2.
+
+**Resolution** means: you give a list of wishes with ranges ("psycopg 3.2 or newer but below 4"). Each package in turn depends on other packages with their own ranges. The resolver asks the package index which versions exist and what each requires, and finds one exact version of every package such that every requirement holds. That answer, written down with the files' checksums, is the lock ([pip-and-hash-locking.md](pip-and-hash-locking.md)).
 
 ## Why this repository uses it
 
-To make `requirements.lock` and `requirements-dev.lock`. `uv pip compile` works out which exact version of every package, including packages your packages need, satisfies the ranges in `pyproject.toml`, and writes each file's SHA-256 hash ([pip-and-hash-locking.md](pip-and-hash-locking.md)). Nothing in `make install`, `make test` or CI needs `uv`; they use plain `pip` with the finished lock.
+To produce `requirements.lock` and `requirements-dev.lock` with hashes. Nothing else in the project needs `uv`: `make install`, `make test`, CI and the Docker image all use plain `pip` with the finished lock. A learner can run every command in the README without installing `uv`; it is needed only to refresh the locks.
 
 ## Where it appears
 
 | Path | Use |
 |---|---|
-| `requirements.lock`, `requirements-dev.lock` | Their header comments record the exact `uv pip compile` command. |
-| `README.md` | Lists `uv` as optional, only for regenerating the locks. |
+| `requirements.lock`, `requirements-dev.lock` | Their first two comment lines record the exact command. |
 
 ## How it works underneath
 
-A **resolver** reads the ranges (`psycopg[binary]>=3.2,<4`), asks the package index which versions exist and what each one requires, and finds a set of versions where every requirement holds. `uv` does this much faster than pip. With `--universal` it produces one answer that is valid on all operating systems, using markers (`; sys_platform == 'win32'`) where packages differ.
+`uv pip compile` is the "pip-compatible" interface: input a project file or a requirements file, output a requirements file. It downloads package metadata (not the packages themselves unless needed) from the index, solves the version puzzle, and writes `name==version` lines. With `--generate-hashes` it also records the SHA-256 of each downloadable file. `--universal` makes a single result that works on all operating systems and Python implementations by attaching *markers* (conditions after a semicolon) to lines that differ.
 
 ## Walkthrough of this repository's use
+
+The command, with every flag explained:
 
 ```bash
 uv pip compile pyproject.toml --extra dev --generate-hashes --universal --python-version 3.12 -o requirements-dev.lock
 ```
-- `pip compile` is the "pip-compatible" interface: input in, requirements file out.
-- `pyproject.toml` is the input; `--extra dev` adds the `dev` group.
-- `--generate-hashes` records every distribution file's SHA-256.
-- `--universal` makes a cross-platform result.
-- `--python-version 3.12` resolves as if running 3.12, the oldest supported.
-- `-o` names the output.
 
-The runtime lock is the same command without `--extra dev`, writing `requirements.lock`.
+- `uv pip compile`: resolve and write a requirements file.
+- `pyproject.toml`: the input; its `[project] dependencies` and `[project.optional-dependencies]` are read ([toml.md](toml.md)).
+- `--extra dev`: also include the `dev` group of optional dependencies: the test and lint tools.
+- `--generate-hashes`: add `--hash=sha256:...` lines for every file of every package.
+- `--universal`: resolve for every platform at once (for example, a package needed only on Windows gets a marker).
+- `--python-version 3.12`: resolve as if for Python 3.12, the oldest version the project supports, so the lock works on 3.12 and newer.
+- `-o requirements-dev.lock`: write the result to this file.
+
+The runtime lock is the same command without `--extra dev`, writing `requirements.lock`. The result contains the project's own wish `psycopg[binary]` expanded to `psycopg==3.3.6` and `psycopg-binary==3.3.6 ; implementation_name != 'pypy'`.
+
+After refreshing, run `make install` (the stamp file notices the new lock and rebuilds the environment), `make check`, and `make audit`.
+
+`uv` is not needed anywhere else; installing a lock uses `pip install --require-hashes -r FILE` ([pip-and-hash-locking.md](pip-and-hash-locking.md)).
 
 ## Try it yourself
 

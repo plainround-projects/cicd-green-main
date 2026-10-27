@@ -2,70 +2,133 @@
 
 ## What it is
 
-`pip` is Python's package installer. It downloads **packages** (libraries) from PyPI, the public package index, and installs them. A **virtual environment** (`python -m venv .venv`) is a private folder with its own interpreter and its own installed packages. A **lock file** lists the exact version of every package, including packages that your packages need (**transitive dependencies**). A **hash** is a SHA-256 fingerprint of one downloaded file. `uv` is a fast tool that can create such lock files (`uv pip compile`). Tool versions here: pip 26.2.2 (pinned in the lock), uv 0.11.2 (used by the author to regenerate locks; not needed to run the project).
+A **package** is a library that somebody published so others can use it. **PyPI** (the Python Package Index) is the public website where Python packages are stored. **pip** is the program that downloads packages from PyPI and installs them, together with the packages they need.
+
+A **virtual environment** is a private folder holding its own copy of Python and its own installed packages. Making one per project (`python -m venv .venv`) means two projects can need different versions of the same package without clashing, and nothing is installed into the computer's own Python.
+
+Two problems come up when many people and machines install packages:
+
+1. **Drift.** If the instruction is "install pytest", then Monday's build installs one version and Tuesday's installs a newer one. The same code can pass on Monday and fail on Tuesday.
+2. **Tampering.** A downloaded file could be replaced by a malicious copy.
+
+The cure for both is a **lock file**: a list of the *exact* version of every package, including the packages your packages need (**transitive dependencies**), and a **hash** for each file. A hash (here SHA-256) is a long number computed from a file's bytes; change one byte and the hash is completely different. With `pip install --require-hashes`, pip refuses to install any file whose hash is not in the lock file.
+
+The lock files here are written by a tool called `uv` ([uv.md](uv.md)); installing from them needs only plain `pip`. The pip version is pinned inside the lock (26.2.2).
 
 ## Why this repository uses it
 
-If the pipeline installs "whatever is newest", the same commit can pass on Monday and fail on Tuesday. The lesson's rule: the environment is part of the build and must be identical every time. A hashed lock also stops a poisoned or swapped package: if the downloaded file does not match its recorded hash, pip refuses it.
+The lesson's rule is that the environment is part of the build. A pipeline that installs "whatever is newest" cannot be trusted to give the same answer twice. The hashes also mean that a poisoned or swapped package is refused instead of installed.
 
 ## Where it appears
 
 | Path | Role |
 |---|---|
-| `pyproject.toml` | The human-written list: `dependencies = ["psycopg[binary]>=3.2,<4"]` and the `dev` extra. |
-| `requirements.lock` | Runtime dependencies, exact versions with hashes (used by the Dockerfile). |
-| `requirements-dev.lock` | Runtime plus development tools, exact versions with hashes (used by `make install`, CI and the cache key). |
-| `Makefile` | `pip install --require-hashes -r requirements-dev.lock`. |
-| `Dockerfile` | `pip install --require-hashes -r requirements.lock`. |
-| `.github/actions/setup/action.yml` | Caches pip, keyed on `requirements-dev.lock`. |
-| `.github/dependabot.yml` | Proposes updates weekly. |
+| `pyproject.toml` | The human-written wish list: ranges such as `psycopg[binary]>=3.2,<4` and the `dev` group ([toml.md](toml.md)). |
+| `requirements.lock` | The runtime dependencies as exact versions with hashes. The Dockerfile installs from it. |
+| `requirements-dev.lock` | Runtime plus development tools, exact versions with hashes. `make install`, CI and the pip cache use it. |
+| `Makefile` lines 17 to 21 | `pip install --require-hashes -r requirements-dev.lock`. |
+| `Dockerfile` line 12 | `pip install --require-hashes -r requirements.lock`. |
+| `.github/actions/setup/action.yml` | Caches pip's downloads, keyed by the lock file. |
+| `.github/dependabot.yml` | Proposes updates ([dependabot.md](dependabot.md)). |
 
 ## How it works underneath
 
-- `pip install -r file` reads lines like `psycopg==3.3.6 --hash=sha256:...`, downloads each file, and installs it into the environment of the pip that is running.
-- With `--require-hashes`, pip demands a hash for **every** package, and it checks each download. A missing or mismatching hash stops the install.
-- `--no-deps` installs only the named package and ignores its requirements (they are already in the lock).
-- `-e .` is an **editable install**: the environment points at your source folder instead of copying it, so edits take effect at once.
-- `uv pip compile` resolves the `pyproject.toml` ranges into one exact solution and writes the file. `--universal` produces a lock that works on every operating system by adding markers such as `; implementation_name != 'pypy'`.
+- `pip install -r FILE` reads each line of the file as a package requirement. A line such as `psycopg==3.3.6 --hash=sha256:...` means "exactly version 3.3.6, and only a file whose SHA-256 is one of these".
+- A package usually has several files on PyPI (a *wheel* for each platform, and a source archive), so a lock lists several hashes for one package; any one match is accepted.
+- With `--require-hashes` every package must have a hash, including the dependencies, so a half-pinned file is refused.
+- `--no-deps` tells pip to install only the package named and none of its requirements. That is right when the lock already lists everything.
+- `-e .` is an **editable** install: instead of copying the project into the environment, pip leaves a pointer to your source folder, so edits take effect without reinstalling.
+- `-q` makes pip quiet.
+- A *marker* after a semicolon limits a line to certain situations: `psycopg-binary==3.3.6 ; implementation_name != 'pypy'` means "install this except on the PyPy interpreter".
 
 ## Walkthrough of this repository's use
 
-The header of `requirements-dev.lock` records how it was made:
+### The header of `requirements-dev.lock`
 
 ```
 # This file was autogenerated by uv via the following command:
 #    uv pip compile pyproject.toml --extra dev --generate-hashes --universal --python-version 3.12 -o requirements-dev.lock
 ```
-- `--extra dev` includes the `dev` list from `[project.optional-dependencies]`.
-- `--generate-hashes` writes the `--hash=sha256:...` lines (a package has several, one per wheel file).
-- `--python-version 3.12` resolves for the oldest supported Python.
-- `-o` is the output file.
 
-A typical entry:
+The first two lines are comments written by the tool. They record the command that made the file:
+
+`uv pip compile pyproject.toml --extra dev --generate-hashes --universal --python-version 3.12 -o requirements-dev.lock`
+
+- `uv pip compile pyproject.toml` reads the ranges in `pyproject.toml` and works out one exact version of every package that satisfies them all (the *resolution*).
+- `--extra dev` includes the `dev` group.
+- `--generate-hashes` writes the hash lines.
+- `--universal` produces one answer valid on every operating system, using markers where packages differ.
+- `--python-version 3.12` resolves as if for the oldest supported Python.
+- `-o FILE` names the output.
+
+`requirements.lock` is made the same way without `--extra dev`.
+
+### What a pinned entry looks like
 
 ```
+# This file was autogenerated by uv via the following command:
+#    uv pip compile pyproject.toml --generate-hashes --universal --python-version 3.12 -o requirements.lock
 psycopg==3.3.6 \
-    --hash=sha256:... \
+    --hash=sha256:a1db9f7148b06a28606767efaca51fa6f9398c5c0a3810519be69d7000bdb631 \
+    --hash=sha256:c081f2250df751a943036e42db6df4571c66cd0aabe8291a7a506512b12007d2
+    # via cicd-green-main (pyproject.toml)
 psycopg-binary==3.3.6 ; implementation_name != 'pypy' \
-    --hash=sha256:...
+    --hash=sha256:05a83ac9fd52b9bca7cb5ab04b3691163170bd16f53defa27216ea3aa07ee781 \
+    --hash=sha256:0a52991594ac4db888c7d39bccef331797e30cb31a95cae02cf2607f83a42dc2 \
+    --hash=sha256:0bf08b749cc144f33b44a91b78e3f71c60eb07963746a0df5a100b36ce3d7475 \
+    --hash=sha256:0ebfad5d131de9f892ae9e70cc7616207768b6714b66a52d4612b8ceaf78b372 \
+    --hash=sha256:1679a1cb93fbe5a6d1fd58d82cbddcc6fcb8c61446ba7cae6eb2a7b19bc585de \
 ```
-`==` is an exact pin. The `;` part is an environment marker: only install on CPython.
+
+Each package is a line `name==version \` followed by indented `--hash=sha256:...` lines (the trailing backslash continues the line). The lock is long (53 pinned packages in the development lock) because every tool has its own dependencies; none of them was chosen by hand.
+
+### Installing from the lock: the `Makefile`
 
 ```make
 $(STAMP): requirements-dev.lock pyproject.toml
 	$(PYTHON) -m venv $(VENV)
 	$(VENV)/bin/pip install -q --require-hashes -r requirements-dev.lock
 	$(VENV)/bin/pip install -q --no-deps -e .
+	touch $@
 ```
-First the locked tools, then the project itself ([make.md](make.md)). `-q` is quiet.
 
-The Dockerfile uses `requirements.lock` (no test tools in the image) with `--require-hashes`, then installs the wheel with `--no-deps`.
+- **Line 17**: the stamp file depends on both inputs; if either changes, the environment is rebuilt ([make.md](make.md)).
+- **Line 18**: create the virtual environment.
+- **Line 19**: `pip install -q --require-hashes -r requirements-dev.lock` installs the tools, refusing any file whose hash is not in the lock.
+- **Line 20**: `pip install -q --no-deps -e .` installs this project itself into the environment so that `import small_service` and the `small-service` command work, without touching the locked packages.
+- **Line 21**: record success.
 
-To refresh the lock (not done by `make`):
+`make test-artifact` makes a *second* environment named from the lock's checksum (`.cache/artifact-venv-<12 characters of the hash>`), installs the same locked tools there, and installs the **built wheel** with `--force-reinstall --no-deps` to test the shipped artifact in isolation. The name changes when the lock changes, so a stale environment is never reused.
 
-```bash
-uv pip compile pyproject.toml --extra dev --generate-hashes --universal --python-version 3.12 -o requirements-dev.lock
+### The image: `Dockerfile`
+
+```dockerfile
+WORKDIR /app
+COPY requirements.lock ./
+RUN pip install --require-hashes -r requirements.lock
+
+COPY dist/*.whl ./
+RUN pip install --no-deps ./*.whl && rm ./*.whl
 ```
+
+The image installs only the runtime lock: `RUN pip install --require-hashes -r requirements.lock`, and then the wheel with `--no-deps`. The test tools never enter the image ([docker.md](docker.md)).
+
+### The cache in CI
+
+```yaml
+  steps:
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: requirements-dev.lock
+```
+
+`cache: pip` tells `actions/setup-python` to save pip's download folder between runs. `cache-dependency-path: requirements-dev.lock` makes the lock file the **cache key**: as long as the lock is unchanged the cache is reused; when it changes, a new cache is made ([github-actions.md](github-actions.md)).
+
+### Refreshing the lock
+
+Not done by `make`: run the `uv pip compile` command from the header again (see [uv.md](uv.md)) and commit the new file. Then `make audit` checks it for known vulnerabilities ([pip-audit.md](pip-audit.md)).
 
 ## Try it yourself
 

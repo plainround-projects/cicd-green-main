@@ -2,71 +2,112 @@
 
 ## What it is
 
-SQL (Structured Query Language) is the language you use to talk to a relational database. It has statements that **define** structure (DDL: `CREATE TABLE`, `CREATE INDEX`), **change** data (DML: `INSERT`, `UPDATE`, `DELETE`) and **read** data (`SELECT`). You say *what* you want, and the database decides *how* to get it. This repository uses the PostgreSQL dialect ([postgresql.md](postgresql.md)).
+**SQL** (said "S-Q-L" or "sequel") is the language you use to talk to a relational database ([postgresql.md](postgresql.md)). You do not tell the database *how* to do something step by step; you describe *what* you want, and the database works out how.
+
+SQL statements come in three families:
+
+- **Defining structure** (DDL, data-definition language): `CREATE TABLE`, `CREATE INDEX`.
+- **Changing data** (DML, data-manipulation language): `INSERT` adds rows, `DELETE` removes rows, `UPDATE` changes them.
+- **Reading data**: `SELECT`.
+
+Rules of the language: a statement ends with a semicolon. Keywords are not case-sensitive (this project writes them in capitals). Text values are written in single quotes: `'seed-export'`. `--` starts a comment to the end of the line. `NULL` means "unknown or absent": it is not equal to anything, not even to itself.
+
+This repository uses the PostgreSQL 16 dialect.
 
 ## Why this repository uses it
 
-The service must store job runs, and the lesson wants the schema kept in plain files that anyone can read, apply and re-apply. The three files under `sql/` are applied by `make db` locally and by the CI integration job.
+The service must store job runs, and the lesson wants the structure of the database in plain files that anyone can read, apply and apply again. Three files in `sql/` do that.
 
 ## Where it appears
 
 | Path | What it does |
 |---|---|
-| `sql/001_schema.sql` | DDL: the table `job_runs`, two indexes, comments. |
-| `sql/002_seed.sql` | DML: deletes and re-inserts six sample rows (keys start with `seed-`). |
-| `sql/003_queries.sql` | Three example `SELECT` queries. Not applied; for reading and for `psql`. |
-| `src/small_service/infrastructure/postgres_store.py` | Two statements embedded in Python (`INSERT`, `SELECT`) plus `SELECT 1`. |
-| `Makefile` target `db` | Applies `sql/00[12]_*.sql` in order. |
+| `sql/001_schema.sql` | DDL: the table `job_runs`, two indexes, comments ([postgresql.md](postgresql.md) explains it line by line). |
+| `sql/002_seed.sql` | DML: deletes the old sample rows and inserts six new ones. |
+| `sql/003_queries.sql` | Three example `SELECT` statements. Not applied by `make db`; run by hand or in tests. |
+| `src/small_service/infrastructure/postgres_store.py` | Two statements embedded in Python (an `INSERT` and a `SELECT`) and a tiny `SELECT 1`. |
+| `Makefile` target `db` | Applies `sql/001_*` and `sql/002_*` in order. |
 
 ## How it works underneath
 
-- A statement ends with `;`. `--` starts a comment that lasts to the end of the line.
-- The database parses the text, plans how to run it (which index to use) and runs it. `EXPLAIN` shows the plan.
-- `NULL` means "unknown". `NULL = NULL` is not true. That is why columns here are `NOT NULL`.
-- A `WHERE` clause filters rows, `ORDER BY` sorts, `LIMIT` cuts, `GROUP BY` collapses rows into groups for functions like `count` and `max`.
-- A **placeholder** (`%s` in psycopg) keeps data separate from the statement, so data can never be read as SQL.
+The database reads the text, checks it, and **plans** it: decides which indexes to use and in what order to do things. `EXPLAIN` in front of a query shows the plan.
+
+A `SELECT` is read in this logical order, whatever order you write the parts in: `FROM` (which table), `WHERE` (keep only rows that satisfy a condition), `GROUP BY` (collapse rows into groups so counts and totals can be made per group), the select list (which columns or calculations to output), `ORDER BY` (sort), `LIMIT` (keep only the first N rows).
+
+A **placeholder** is a hole in a statement for a value that is sent separately. Python's database library writes it as `%s`. Because the value travels separately from the statement text, it can never be mistaken for SQL. Gluing values into SQL text instead is the classic security hole called **SQL injection**.
 
 ## Walkthrough of this repository's use
 
-### `002_seed.sql`: safe to repeat
+### `sql/002_seed.sql`: sample data that can be loaded again and again
 
 ```sql
+-- DML: a few rows so `make history` and the queries in 003_queries.sql have something to show.
+-- Re-running is safe: the seed rows are keyed 'seed-*' and replaced.
 DELETE FROM job_runs WHERE job_key LIKE 'seed-%';
 
 INSERT INTO job_runs (job_key, recorded_at, duration_ms, finished) VALUES
     ('seed-nightly-report',  '2026-09-01 02:00:00+00',  71, true),
-    ...
+    ('seed-nightly-report',  '2026-09-02 02:00:00+00',  96, true),
+    ('seed-cache-warmup',    '2026-09-02 08:15:00+00',  58, true),
+    ('seed-nightly-report',  '2026-09-03 02:00:00+00', 112, true),
     ('seed-export',          '2026-09-03 09:30:00+00', 1000, false),
+    ('seed-cache-warmup',    '2026-09-04 08:15:00+00',  64, true);
 ```
-`LIKE 'seed-%'` matches any text starting with `seed-` (`%` means "anything"). Deleting first makes the script **idempotent**: running it ten times leaves six rows, not sixty. The `+00` in each time is the UTC offset. The `seed-export` row has `finished = false` and 1000 ms, so the "timed out" query has something to show. The `id` column is not listed: the database numbers the rows.
 
-### `003_queries.sql`
+- **Lines 1 and 2** are comments: DML, a few rows so `make history` and the queries have something to show; re-running is safe because seed rows are keyed `seed-*` and replaced.
+- **Line 3**: `DELETE FROM job_runs WHERE job_key LIKE 'seed-%';` removes every row whose `job_key` begins with `seed-`. `LIKE` compares text to a pattern in which `%` stands for "any characters". Deleting first is what makes the script **idempotent**: running it ten times leaves six rows, not sixty. Rows your own runs created have other keys and are untouched.
+- **Lines 5 to 11**: `INSERT INTO job_runs (job_key, recorded_at, duration_ms, finished) VALUES (...), (...), ...;` adds six rows in one statement. The list in the first parentheses names the columns being filled; each following parentheses is one row, in the same order. The `id` column is not mentioned: the database numbers it. Times such as `'2026-09-01 02:00:00+00'` carry `+00`, the offset from UTC, so each is an exact moment. `true` and `false` are the boolean values. The row `('seed-export', '2026-09-03 09:30:00+00', 1000, false)` is the one that "timed out": 1000 milliseconds and `finished = false`.
+
+### `sql/003_queries.sql`: three questions to ask
 
 ```sql
+-- The queries the project's README and tests run. Each starts with a one-line comment on what it shows.
+
+-- Newest runs first: what `small-service history` prints.
 SELECT job_key, recorded_at, duration_ms, finished FROM job_runs ORDER BY recorded_at DESC, id DESC LIMIT 5;
-```
-The five newest runs. `DESC` is descending. `id DESC` breaks ties when two runs have the same time.
 
-```sql
+-- Runs that hit the wait timeout (finished = false): the partial index serves this scan.
 SELECT job_key, recorded_at, duration_ms FROM job_runs WHERE NOT finished ORDER BY recorded_at;
-```
-Runs that hit the timeout. The partial index `job_runs_unfinished_idx` covers exactly `WHERE NOT finished`.
 
-```sql
+-- The job's work is meant to take 50 to 112.5 ms: how the finished runs are distributed.
 SELECT job_key, count(*) AS runs, min(duration_ms) AS fastest_ms, max(duration_ms) AS slowest_ms
 FROM job_runs WHERE finished GROUP BY job_key ORDER BY job_key;
 ```
-One output row per job key: how many finished runs, the fastest and the slowest. `AS` names the output columns.
 
-### SQL inside Python
+- **Line 1** is a comment. **Lines 3 and 4**: `SELECT job_key, recorded_at, duration_ms, finished FROM job_runs ORDER BY recorded_at DESC, id DESC LIMIT 5;` The five newest runs. `ORDER BY recorded_at DESC` sorts from newest to oldest (`DESC` is descending); `id DESC` breaks ties; `LIMIT 5` keeps five rows. This is what `small-service history` prints, and the first index serves it.
+- **Lines 6 and 7**: `SELECT job_key, recorded_at, duration_ms FROM job_runs WHERE NOT finished ORDER BY recorded_at;` The runs that hit the timeout, oldest first. `WHERE NOT finished` keeps rows where `finished` is false; the partial index serves it.
+- **Lines 9 to 11**: `SELECT job_key, count(*) AS runs, min(duration_ms) AS fastest_ms, max(duration_ms) AS slowest_ms FROM job_runs WHERE finished GROUP BY job_key ORDER BY job_key;` One output row per job key: `GROUP BY job_key` collapses the finished rows into one group per key; `count(*)` counts the rows in a group, `min` and `max` give the smallest and largest value of a column; `AS runs` names the output column. The comment says the job's work takes 50 to 112.5 ms, so a group's fastest and slowest times should fall in that range.
+
+### SQL written inside Python: `postgres_store.py`
 
 ```python
-connection.execute(
-    "INSERT INTO job_runs (job_key, recorded_at, duration_ms, finished) VALUES (%s, %s, %s, %s)",
-    (record.job_key, record.recorded_at, record.duration_ms, record.finished),
-)
+    def save(self, record: JobRecord) -> None:
+        """Insert one row; the transaction commits when the connection block ends."""
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO job_runs (job_key, recorded_at, duration_ms, finished) VALUES (%s, %s, %s, %s)",
+                (record.job_key, record.recorded_at, record.duration_ms, record.finished),
+            )
+
+    def recent(self, limit: int) -> list[JobRecord]:
+        """The newest rows first."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT job_key, recorded_at, duration_ms, finished FROM job_runs "
+                "ORDER BY recorded_at DESC, id DESC LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return [JobRecord(key, recorded_at, duration, finished) for key, recorded_at, duration, finished in rows]
+
+    def ping(self) -> None:
+        """Run `SELECT 1`; any error propagates."""
+        with self._connect() as connection:
+            connection.execute("SELECT 1")
 ```
-Four placeholders, and a tuple of four values. The driver sends them separately ([psycopg.md](psycopg.md)). The same pattern with `LIMIT %s` is used in `recent`.
+
+- **Lines 31 to 34**: `INSERT INTO job_runs (job_key, recorded_at, duration_ms, finished) VALUES (%s, %s, %s, %s)` followed by a tuple of four values. The four `%s` are the placeholders; psycopg sends the statement and the values separately ([psycopg.md](psycopg.md)).
+- **Lines 39 to 43**: the `SELECT` is the first query above with a placeholder for the limit: `... ORDER BY recorded_at DESC, id DESC LIMIT %s` and `(limit,)` as the values. The two string pieces on adjacent lines are joined by Python into one statement. `(limit,)` has a comma because that is what makes a one-item tuple in Python.
+- **Lines 46 to 49**: `connection.execute("SELECT 1")` is the smallest possible query. If the database answers, it is up.
 
 ## Try it yourself
 
