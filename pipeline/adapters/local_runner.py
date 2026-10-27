@@ -128,7 +128,7 @@ def run_pipeline(root: Path, options: RunOptions, runs_csv: Path) -> tuple[list[
         outcomes = run_parallel(root, options)
     seconds = time.monotonic() - started
     required_ok = all(outcome.ok for outcome in outcomes if outcome.name in REQUIRED or outcome.name == "sequential")
-    failures = _unit_failures(root)
+    failures = _failures(root)
     record = runlog.RunRecord(
         run=runlog.next_run_number(runlog.read(runs_csv)),
         commit=git.head_sha(root)[:7],
@@ -142,6 +142,32 @@ def run_pipeline(root: Path, options: RunOptions, runs_csv: Path) -> tuple[list[
     return outcomes, record
 
 
-def _unit_failures(root: Path) -> list[FailedTest]:
-    report = root / "reports" / "unit.xml"
-    return parse_junit_failures(report.read_text()) if report.exists() else []
+def hunt(root: Path, runs: int, runs_csv: Path) -> list[runlog.RunRecord]:
+    """Run the domain tests, quarantined test included, `runs` times on the same commit, logging every run.
+
+    Each row is one pass or fail of the same code: the data a flaky test shows up in, instead of a rerun until green."""
+    records = []
+    commit = git.head_sha(root)[:7]
+    for _ in range(runs):
+        shutil.rmtree(root / "reports", ignore_errors=True)
+        started = time.monotonic()
+        outcome = run_job(make_job("hunt", "test-domain", "UNIT_MARKERS="), root, root / "reports")
+        failures = _failures(root)
+        record = runlog.RunRecord(
+            run=runlog.next_run_number(runlog.read(runs_csv)),
+            commit=commit,
+            seconds=time.monotonic() - started,
+            result=runlog.SUCCESS if outcome.ok else runlog.FAILURE,
+            variant="flake-hunt",
+            failed_tests=tuple(failure.test_id for failure in failures),
+            message=failures[0].message if failures else "",
+        )
+        runlog.append(runs_csv, record)
+        records.append(record)
+    return records
+
+
+def _failures(root: Path) -> list[FailedTest]:
+    """Failed tests of the unit and integration reports, so a failed run says where it failed."""
+    reports = [root / "reports" / "unit.xml", root / "reports" / "integration.xml"]
+    return [failure for report in reports if report.exists() for failure in parse_junit_failures(report.read_text())]

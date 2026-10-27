@@ -8,7 +8,7 @@ COMPOSE := docker compose
 -include .env
 export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD LOG_LEVEL CACHE_TTL_SECONDS JOB_TIMEOUT_SECONDS
 
-.PHONY: help install up db down run run-baseline bench flaky-hunt flaky-report test quarantine test-integration test-artifact \
+.PHONY: help install up db down run run-baseline bench flaky-hunt flaky-report test test-domain quarantine test-integration test-artifact \
         test-e2e lint format audit check build verify deploy-local gate-demo workflows act protection contract history clean
 
 help: ## list the targets
@@ -52,10 +52,8 @@ bench: up ## 5 sequential and 5 parallel runs, then the before and after table (
 
 # Step 5: run the unit job WITH the quarantined test 40 times on one commit, then read the log.
 HUNT_RUNS ?= 40
-flaky-hunt: $(STAMP) ## run the unit job with the planted flaky test HUNT_RUNS times (default 40)
-	@for run in $$(seq 1 $(HUNT_RUNS)); do \
-	  $(PY) -m pipeline run --only unit --include-quarantined --label flake-hunt >/dev/null || true; \
-	done
+flaky-hunt: $(STAMP) ## run the domain tests WITH the planted flaky test HUNT_RUNS times (default 40) and log each run
+	$(PY) -m pipeline hunt --runs $(HUNT_RUNS)
 	$(MAKE) --no-print-directory flaky-report
 
 flaky-report: $(STAMP) ## find flaky tests in runs.csv: commits with both a pass and a fail, and each test's failure rate
@@ -81,6 +79,11 @@ test: $(STAMP) ## unit tests of the service and the pipeline, with coverage and 
 	$(PY) -m pytest tests/unit tests/pipeline -m "$(UNIT_MARKERS)" -p no:cacheprovider --junitxml=reports/unit.xml \
 	  --cov --cov-report=term --cov-report=xml:reports/coverage.xml
 	$(PY) -m coverage report --include='src/small_service/domain/*,src/small_service/application/*,pipeline/core/*' --fail-under=95
+
+# The domain tests alone, quick enough to run dozens of times: what `make flaky-hunt` repeats.
+test-domain: $(STAMP) ## unit tests of the domain package only (no coverage); UNIT_MARKERS= includes the quarantined test
+	@mkdir -p reports
+	$(PY) -m pytest tests/unit/domain -m "$(UNIT_MARKERS)" -p no:cacheprovider --junitxml=reports/unit.xml -q
 
 quarantine: $(STAMP) ## the quarantined tests: they still run and report, and never block (exit status is ignored by CI)
 	@mkdir -p reports

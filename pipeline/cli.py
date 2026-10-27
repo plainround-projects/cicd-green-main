@@ -36,6 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--include-quarantined", action="store_true", help="run quarantined tests inside the unit job")
     run.add_argument("--label", default="", help="the name this run gets in runs.csv (default: the variant)")
     run.add_argument("--runs-csv", type=Path, default=ROOT / "runs.csv")
+    hunt = commands.add_parser("hunt", help="run the domain tests with the quarantined test N times on one commit")
+    hunt.add_argument("--runs", type=int, default=40)
+    hunt.add_argument("--runs-csv", type=Path, default=ROOT / "runs.csv")
     bench = commands.add_parser("bench", help="run both variants N times and print the before and after table")
     bench.add_argument("--runs", type=int, default=5)
     bench.add_argument("--runs-csv", type=Path, default=ROOT / "runs.csv")
@@ -131,6 +134,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run(args)
         case "bench":
             return _bench(args)
+        case "hunt":
+            records = local_runner.hunt(ROOT, args.runs, args.runs_csv)
+            failed = sum(1 for record in records if record.result == runlog.FAILURE)
+            print(f"{len(records)} runs on commit {records[0].commit if records else '-'}: {failed} failed")
         case "flaky":
             records = runlog.read(args.runs_csv)
             print(

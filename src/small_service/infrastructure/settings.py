@@ -68,7 +68,7 @@ class Settings:
             postgres_password=_text(env, "POSTGRES_PASSWORD"),
             log_level=level,
             cache_ttl_seconds=_positive_number(env, "CACHE_TTL_SECONDS", 30),
-            job_timeout_seconds=_positive_number(env, "JOB_TIMEOUT_SECONDS", 1),
+            job_timeout_seconds=_positive_number(env, "JOB_TIMEOUT_SECONDS", 5),
         )
 
     @property
