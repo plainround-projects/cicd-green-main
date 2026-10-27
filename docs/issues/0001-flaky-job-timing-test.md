@@ -8,7 +8,17 @@ Fix by: 2026-11-30, then delete the marker and this test
 
 Measured with `make flaky-hunt` (the unit job with the quarantined test included, 40 runs on one commit, `runs.csv`):
 
-FAILURE_RATE_PLACEHOLDER
+```text
+$ make flaky-hunt          # 40 runs on commit 8275c82, every row in docs/measurements/flake-hunt.csv
+commits with both a pass and a fail:
+  8275c82
+failure rate of tests/unit/domain/test_jobs_timing.py::test_job_finishes_in_time: 3 of 40 runs (8%)
+  failed 3 times with: assert False
+```
+
+The same commit both passed and failed, so the code did not change between the answers. The expected rate from the cause
+below is 20%; 8% was measured, on a Mac that was running a dozen other jobs, where `time.sleep(0.1)` oversleeps and gives
+the job extra time. The rate depends on the machine, which is one more reason not to tune the sleep.
 
 Every failure has the same message, `assert False` on `job.done`, and never anything else. A flake that always fails the same assertion points at timing, not at a bug in the logic.
 

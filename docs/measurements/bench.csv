@@ -1,0 +1,11 @@
+run,commit,seconds,result,variant,failed_tests,message
+1,af1d6c5,415.9,success,sequential,,
+2,af1d6c5,345.9,success,sequential,,
+3,af1d6c5,376.8,success,sequential,,
+4,af1d6c5,401.3,success,sequential,,
+5,af1d6c5,485.3,success,sequential,,
+6,af1d6c5,135.8,success,parallel,,
+7,af1d6c5,103.9,success,parallel,,
+8,af1d6c5,72.1,failure,parallel,,
+9,af1d6c5,114.6,success,parallel,,
+10,af1d6c5,145.1,success,parallel,,
