@@ -139,7 +139,7 @@ This defines a function `ci_token_given` that answers "did the pusher present th
 - **Line 10**: `expected=$(cat "$GIT_DIR/ci-token" 2>/dev/null)` reads the secret. `GIT_DIR` is a variable Git sets for hooks to the repository's folder. Errors are hidden, so a missing file gives empty text.
 - **Line 11**: `[ -n "$expected" ] || return 1`: with no secret configured nobody can post a status, so leave with failure (1).
 - **Line 12**: `i=0` is a counter. **Line 13**: `while [ "$i" -lt "${GIT_PUSH_OPTION_COUNT:-0}" ]; do` loops while the counter is less than the number of push options (Git puts that number in `GIT_PUSH_OPTION_COUNT`; `:-0` supplies 0 if it is unset).
-- **Line 14**: `eval "option=\$GIT_PUSH_OPTION_$i"`. Git passes the options as variables named `GIT_PUSH_OPTION_0`, `GIT_PUSH_OPTION_1` and so on. To read "the variable whose name ends with the counter" the script builds the text `option=$GIT_PUSH_OPTION_0` and hands it to `eval`, which expands and runs it. (`\$` keeps the first dollar sign literal for `eval` to expand.)
+- **Line 14**: `eval "option=\$GIT_PUSH_OPTION_$i"`. Git passes the options as variables named `GIT_PUSH_OPTION_0`, `GIT_PUSH_OPTION_1`, `GIT_PUSH_OPTION_2`, one more for each option, up to the count in `GIT_PUSH_OPTION_COUNT`. To read "the variable whose name ends with the counter" the script builds the text `option=$GIT_PUSH_OPTION_0` and hands it to `eval`, which expands and runs it. (`\$` keeps the first dollar sign literal for `eval` to expand.)
 - **Line 15**: if the option equals `ci-token=` plus the secret, `return 0` (success). **Line 16**: `i=$((i + 1))`: `$(( ))` is whole-number arithmetic. **Lines 17 and 18**: after the loop, `return 1`.
 
 ```
