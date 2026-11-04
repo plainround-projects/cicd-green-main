@@ -10,6 +10,24 @@ A small Python service and the CI pipeline that keeps its `main` branch releasab
 | **Architecture** | [ARCHITECTURE.md](ARCHITECTURE.md), decisions in [docs/adr](docs/adr) |
 | **Technology notes** | [tech/](tech/README.md): one beginner file per technology used here (29 files) |
 
+## Architecture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.svg">
+  <img alt="A push starts the workflow and the job changes decides code or docs only; the required check holds Lint, Unit tests, Build and the Integration test, which verifies the one wheel Build made, and only then can a change merge into main, while the quarantine job runs outside the check and reports a flaky test." src="docs/diagrams/architecture.svg">
+</picture>
+
+Notice that the required check is four job names, that the artifact is built once and verified by its checksum, and that the quarantine job reports but never blocks.
+
+## How one run flows
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/flow-dark.svg">
+  <img alt="One push passes changes, four parallel jobs start, build makes one wheel, integration verifies and installs it, the required check turns green and main moves; a different digest is a red run." src="docs/diagrams/flow.svg">
+</picture>
+
+The run ends with main moving to a commit that passed everything; the amber row shows the guard that makes a digest mismatch a red run.
+
 ## The pipeline's contract
 
 - Anything on `main` has passed lint, unit and integration tests and can be released.

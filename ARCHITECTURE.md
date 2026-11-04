@@ -32,6 +32,8 @@ Two patterns carry the design.
 
 ## Data flow
 
+Drawn versions of this figure and of the walk-through: [the architecture](docs/diagrams/architecture.svg) and [one run](docs/diagrams/flow.svg).
+
 ```mermaid
 flowchart LR
     dev["Pull request<br/>(a push to a branch)"] --> changes{"changes<br/>code or docs only?"}
